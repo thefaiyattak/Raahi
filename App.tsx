@@ -19,6 +19,10 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('home');
   const [activeTrip, setActiveTrip] = useState<TripData | null>(null);
 
+  // Selected filter cities to pass between screens
+  const [selectedFromCity, setSelectedFromCity] = useState<string>('');
+  const [selectedToCity, setSelectedToCity] = useState<string>('');
+
   // Auth & Profile states
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -122,6 +126,8 @@ export default function App() {
       case 'create_ride':
         return (
           <CreateRideScreen
+            initialFrom={selectedFromCity}
+            initialTo={selectedToCity}
             onBack={handleBack}
             onNavigateToProfile={() => navigateTo('vehicle_config')}
           />
@@ -132,8 +138,17 @@ export default function App() {
         }
         return (
           <HomeScreen
-            onNavigateToCreateRide={() => navigateTo('create_ride')}
+            userProfile={userProfile!}
+            onNavigateToCreateRide={(from, to) => {
+              setSelectedFromCity(from || '');
+              setSelectedToCity(to || '');
+              navigateTo('create_ride');
+            }}
             onNavigateToVehicleConfig={() => navigateTo('vehicle_config')}
+            onSignOut={() => {
+              setAuthSession(null);
+              setUserProfile(null);
+            }}
           />
         );
       case 'home':
@@ -141,7 +156,11 @@ export default function App() {
         return (
           <HomeScreen
             userProfile={userProfile}
-            onNavigateToCreateRide={() => navigateTo('create_ride')}
+            onNavigateToCreateRide={(from, to) => {
+              setSelectedFromCity(from || '');
+              setSelectedToCity(to || '');
+              navigateTo('create_ride');
+            }}
             onNavigateToVehicleConfig={() => navigateTo('vehicle_config')}
             onSignOut={() => {
               setAuthSession(null);

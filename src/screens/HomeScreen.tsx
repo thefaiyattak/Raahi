@@ -24,7 +24,7 @@ import { fetchRoutes, getUniqueLocations } from '../services/sheetService';
 
 interface HomeScreenProps {
   userProfile: UserProfile;
-  onNavigateToCreateRide: () => void;
+  onNavigateToCreateRide: (fromCity?: string, toCity?: string) => void;
   onNavigateToVehicleConfig: () => void;
   onSignOut: () => void;
 }
@@ -260,7 +260,10 @@ export default function HomeScreen({
       {/* Primary Action Button */}
       <View style={styles.actionBannerContainer}>
         {activeTab === 'offer' ? (
-          <TouchableOpacity style={styles.offerRideBtn} onPress={onNavigateToCreateRide}>
+          <TouchableOpacity
+            style={styles.offerRideBtn}
+            onPress={() => onNavigateToCreateRide(filterFromCity, filterToCity)}
+          >
             <Icon name="plus-circle" size={22} color="#FFFFFF" style={{ marginRight: 8 }} />
             <Text style={styles.actionBtnText}>Post a Ride Offer</Text>
           </TouchableOpacity>

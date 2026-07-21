@@ -21,11 +21,18 @@ import { encodeTripToDeepLink, generateWhatsAppMessage, openWhatsApp } from '../
 import { DriverProfile, TripData, RouteConfig } from '../types';
 
 interface CreateRideScreenProps {
+  initialFrom?: string;
+  initialTo?: string;
   onBack: () => void;
   onNavigateToProfile: () => void;
 }
 
-export default function CreateRideScreen({ onBack, onNavigateToProfile }: CreateRideScreenProps) {
+export default function CreateRideScreen({
+  initialFrom = '',
+  initialTo = '',
+  onBack,
+  onNavigateToProfile,
+}: CreateRideScreenProps) {
   const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
@@ -34,11 +41,11 @@ export default function CreateRideScreen({ onBack, onNavigateToProfile }: Create
   const [locations, setLocations] = useState<string[]>([]);
   const [loadingRoutes, setLoadingRoutes] = useState(false);
 
-  // Form State
-  const [selectedOrigin, setSelectedOrigin] = useState<string>('');
+  // Form State initialized with picked filter locations
+  const [selectedOrigin, setSelectedOrigin] = useState<string>(initialFrom);
   const [originDetail, setOriginDetail] = useState<string>('');
   
-  const [selectedDestination, setSelectedDestination] = useState<string>('');
+  const [selectedDestination, setSelectedDestination] = useState<string>(initialTo);
   const [destinationDetail, setDestinationDetail] = useState<string>('');
   
   const [isAC, setIsAC] = useState(false);
