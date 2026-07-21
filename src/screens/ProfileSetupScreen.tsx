@@ -87,8 +87,13 @@ export default function ProfileSetupScreen({
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.title}>Complete Profile</Text>
-          <Text style={styles.subtitle}>Let partners know who you are</Text>
+          <TouchableOpacity onPress={() => onProfileComplete({ uid, email, fullName: '', phoneNumber: '', profilePicture: '', bloodGroup: '' })} style={styles.backButton}>
+            <Icon name="arrow-left" size={24} color="#111827" />
+          </TouchableOpacity>
+          <View style={{ flex: 1, alignItems: 'center', marginRight: 32 }}>
+            <Text style={styles.title}>Complete Profile</Text>
+            <Text style={styles.subtitle}>Let partners know who you are</Text>
+          </View>
         </View>
 
         {/* Avatar Selector */}
@@ -188,8 +193,16 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   header: {
-    marginBottom: 24,
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 24,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   title: {
     fontSize: 28,
