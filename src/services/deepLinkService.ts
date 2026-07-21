@@ -96,12 +96,11 @@ export const decodeDeepLink = (url: string): TripData | null => {
 
 export const generateWhatsAppMessage = (trip: TripData, deepLink: string): string => {
   const formattedTime = new Date(trip.timestamp).toLocaleString();
-  return `🚗 *Carpool Available!*
+  return `🚗 *Raahi Available!*
 
 📍 *From:* ${trip.originAddress}
 🏁 *To:* ${trip.destinationAddress}
 
-📏 *Distance:* ${trip.distanceKm.toFixed(1)} km
 💰 *Fare:* Rs. ${trip.fare.toFixed(2)}
 🧊 *Tier:* ${trip.isAC ? 'AC' : 'Non-AC'}
 
