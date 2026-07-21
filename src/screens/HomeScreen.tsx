@@ -116,8 +116,6 @@ export default function HomeScreen({
         passengerPhone: userProfile.phoneNumber,
         fromCity: bookFrom,
         toCity: bookTo,
-        fromDetails: bookFromDetails,
-        toDetails: bookToDetails,
         bagsCount: parseInt(bagsCount, 10) || 0,
         passengersCount: parseInt(passengersCount, 10) || 1,
         isAC,
