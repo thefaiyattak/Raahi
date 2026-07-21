@@ -20,6 +20,7 @@ import {
   saveBookRidePostLocal,
   saveBookingRequestLocal,
 } from '../services/dbService';
+import { fetchRoutes, getUniqueLocations } from '../services/sheetService';
 
 interface HomeScreenProps {
   userProfile: UserProfile;
@@ -27,19 +28,6 @@ interface HomeScreenProps {
   onNavigateToVehicleConfig: () => void;
   onSignOut: () => void;
 }
-
-const PAKISTAN_CITIES = [
-  'Lahore',
-  'Islamabad',
-  'Rawalpindi',
-  'Karachi',
-  'Faisalabad',
-  'Multan',
-  'Peshawar',
-  'Quetta',
-  'Gujranwala',
-  'Sialkot',
-];
 
 export default function HomeScreen({
   userProfile,
@@ -49,6 +37,9 @@ export default function HomeScreen({
 }: HomeScreenProps) {
   // Navigation & Mode Tabs
   const [activeTab, setActiveTab] = useState<'offer' | 'book'>('offer');
+
+  // Dynamic Cities from Google Sheet
+  const [sheetCities, setSheetCities] = useState<string[]>([]);
 
   // Destination Filters (Mandatory per specification)
   const [filterFromCity, setFilterFromCity] = useState('');
@@ -85,6 +76,20 @@ export default function HomeScreen({
       console.warn('Failed to load posts', e);
     }
   }, [activeTab, filterFromCity, filterToCity]);
+
+  useEffect(() => {
+    loadCitiesFromSheet();
+  }, []);
+
+  const loadCitiesFromSheet = async () => {
+    try {
+      const routes = await fetchRoutes();
+      const cities = getUniqueLocations(routes);
+      setSheetCities(cities);
+    } catch (e) {
+      console.warn('Failed to load cities from sheet', e);
+    }
+  };
 
   useEffect(() => {
     fetchPosts();
@@ -468,7 +473,7 @@ export default function HomeScreen({
           <View style={styles.pickerContainer}>
             <Text style={styles.pickerTitle}>Select From City</Text>
             <FlatList
-              data={PAKISTAN_CITIES}
+              data={sheetCities}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -492,7 +497,7 @@ export default function HomeScreen({
           <View style={styles.pickerContainer}>
             <Text style={styles.pickerTitle}>Select To City</Text>
             <FlatList
-              data={PAKISTAN_CITIES}
+              data={sheetCities}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
