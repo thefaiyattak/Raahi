@@ -83,9 +83,6 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
             <Icon name="arrow-right-thick" size={24} color="#FFFFFF" style={styles.heroArrow} />
             <Text style={styles.heroToText}>{trip.destinationAddress.split(' (')[0]}</Text>
           </View>
-          <View style={styles.heroFooter}>
-            <Text style={styles.heroFooterText}>Distance: {trip.distanceKm.toFixed(1)} km</Text>
-          </View>
         </View>
 
         {/* Route Details Card */}

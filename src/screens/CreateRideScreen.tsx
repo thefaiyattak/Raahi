@@ -18,7 +18,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getDriverProfile } from '../services/storage';
 import { fetchRoutes, getUniqueLocations, matchRoute } from '../services/sheetService';
 import { encodeTripToDeepLink, generateWhatsAppMessage, openWhatsApp } from '../services/deepLinkService';
-import { DriverProfile, TripData, RouteConfig } from '../types';
+import { saveOfferRidePostLocal } from '../services/dbService';
+import { DriverProfile, TripData, RouteConfig, OfferRidePost } from '../types';
 
 interface CreateRideScreenProps {
   initialFrom?: string;
@@ -49,6 +50,7 @@ export default function CreateRideScreen({
   const [destinationDetail, setDestinationDetail] = useState<string>('');
   
   const [isAC, setIsAC] = useState(false);
+  const [seatsAvailable, setSeatsAvailable] = useState('3');
 
   // Dropdown Modal helper state
   const [modalVisible, setModalVisible] = useState(false);
@@ -196,6 +198,44 @@ export default function CreateRideScreen({
     Alert.alert('Message Copied', 'WhatsApp message text copied to clipboard.');
   };
 
+  const handlePostRideOffer = async () => {
+    if (!selectedOrigin || !selectedDestination || !driverProfile || !matchedRouteConfig) {
+      Alert.alert('Validation Error', 'Please select a valid origin and destination route.');
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      const newPost: OfferRidePost = {
+        id: 'offer_' + now,
+        driverUid: driverProfile.phoneNumber,
+        driverName: driverProfile.vehicleName + ' (' + driverProfile.vehicleModel + ')',
+        driverPhone: driverProfile.phoneNumber,
+        fromCity: selectedOrigin,
+        toCity: selectedDestination,
+        fromDetails: originDetail,
+        toDetails: destinationDetail,
+        vehicleDetails: driverProfile.vehicleName + ' - ' + driverProfile.vehicleModel,
+        isAC,
+        seatsAvailable: parseInt(seatsAvailable, 10) || 3,
+        departureTime: '14:00', // Default 2:00 PM departure window
+        departureTimestamp: now + 2 * 60 * 60 * 1000,
+        farePerSeat: calculatedFare,
+        createdAt: now,
+      };
+
+      await saveOfferRidePostLocal(newPost);
+      Alert.alert('Ride Offer Posted!', 'Your ride offer is now live. Other users can view and request seats.', [
+        {
+          text: 'OK',
+          onPress: () => onBack(),
+        },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to post ride offer.');
+    }
+  };
+
   const handleShareWhatsApp = async () => {
     if (!tripObj || !generatedMessage) return;
     try {
@@ -302,18 +342,30 @@ export default function CreateRideScreen({
             <Text style={styles.cardTitle}>Fare Summary (From Google Sheet)</Text>
             
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Distance:</Text>
-              <Text style={styles.summaryValue}>{distanceKm.toFixed(1)} km</Text>
-            </View>
-            <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Tier Option:</Text>
               <Text style={styles.summaryValue}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
             </View>
 
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Fare:</Text>
+              <Text style={styles.totalLabel}>Fare per seat:</Text>
               <Text style={styles.totalValue}>Rs. {calculatedFare.toFixed(2)}</Text>
             </View>
+
+            {/* Seats Count Input */}
+            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Available Seats</Text>
+            <TextInput
+              style={styles.detailInput}
+              keyboardType="numeric"
+              value={seatsAvailable}
+              onChangeText={setSeatsAvailable}
+              placeholder="e.g. 3"
+            />
+
+            {/* Primary Post Button */}
+            <TouchableOpacity style={styles.postRideButton} onPress={handlePostRideOffer}>
+              <Icon name="check-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.postRideButtonText}>Post Ride Offer</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -750,5 +802,24 @@ const styles = StyleSheet.create({
   emptyListText: {
     color: '#9CA3AF',
     fontSize: 14,
+  },
+  postRideButton: {
+    backgroundColor: '#43A047',
+    borderRadius: 14,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    shadowColor: '#43A047',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  postRideButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
