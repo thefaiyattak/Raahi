@@ -1,28 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RouteConfig } from '../types';
 
-// The admin will replace this placeholder with their published Google Sheet CSV URL
-// Example: https://docs.google.com/spreadsheets/d/e/2PACX-1v.../pub?output=csv
-const SHEETS_CSV_URL = 'YOUR_GOOGLE_SHEETS_CSV_URL';
+// Published CSV URL for live fare rates
+const SHEETS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vTX3Op8Amm6UlS5Rd4Ab9g6tizZMpWWwF61yW7gByPJmQujdB8ZK6yHLVbD2_TqU1dUjH7pCQ2R4iFo/pub?output=csv';
+
 const STORAGE_KEY_ROUTES = '@cached_routes';
 
 /**
- * Parses a standard CSV string into an array of RouteConfig objects.
- * Handles headers: Origin, Destination, Distance, AC_Fare, Non_AC_Fare (case-insensitive)
+ * Parses CSV text with headers: Date, Origin, Destination, AC Fare, non-AC Fare (case-insensitive)
  */
 export const parseCSV = (csvText: string): RouteConfig[] => {
   const routes: RouteConfig[] = [];
   const lines = csvText.split(/\r?\n/);
-  
+
   if (lines.length < 2) return [];
 
-  // Parse headers to find indexes
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const originIdx = headers.indexOf('origin');
-  const destIdx = headers.indexOf('destination');
-  const distIdx = headers.indexOf('distance');
-  const acFareIdx = headers.indexOf('ac_fare');
-  const nonAcFareIdx = headers.indexOf('non_ac_fare');
+  // Clean headers
+  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+  const dateIdx = headers.findIndex((h) => h.includes('date'));
+  const originIdx = headers.findIndex((h) => h.includes('origin'));
+  const destIdx = headers.findIndex((h) => h.includes('destination'));
+  const acFareIdx = headers.findIndex((h) => h.includes('ac fare') || h.includes('ac_fare'));
+  const nonAcFareIdx = headers.findIndex((h) => h.includes('non-ac') || h.includes('non_ac'));
 
   if (originIdx === -1 || destIdx === -1) {
     throw new Error('CSV is missing required Origin or Destination headers.');
@@ -32,25 +32,22 @@ export const parseCSV = (csvText: string): RouteConfig[] => {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // Simple CSV parser for comma split (ignoring commas inside quotes if needed, 
-    // but assuming simple location names for this community app)
-    const columns = line.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
-
+    const columns = line.split(',').map((c) => c.replace(/^["']|["']$/g, '').trim());
     if (columns.length < Math.max(originIdx, destIdx) + 1) continue;
 
+    const date = dateIdx !== -1 ? columns[dateIdx] : undefined;
     const origin = columns[originIdx];
     const destination = columns[destIdx];
-    
-    // Fallbacks if distance or fares aren't defined
-    const distanceKm = distIdx !== -1 ? parseFloat(columns[distIdx]) || 0 : 0;
+
     const acFare = acFareIdx !== -1 ? parseFloat(columns[acFareIdx]) || 0 : 0;
     const nonAcFare = nonAcFareIdx !== -1 ? parseFloat(columns[nonAcFareIdx]) || 0 : 0;
 
     if (origin && destination) {
       routes.push({
+        date,
         origin,
         destination,
-        distanceKm: parseFloat(distanceKm.toFixed(1)),
+        distanceKm: 0,
         acFare: parseFloat(acFare.toFixed(2)),
         nonAcFare: parseFloat(nonAcFare.toFixed(2)),
       });
@@ -61,18 +58,11 @@ export const parseCSV = (csvText: string): RouteConfig[] => {
 };
 
 /**
- * Fetches the Google Sheet CSV, parses, caches, and returns routes.
- * Gracefully falls back to cache if network fails.
+ * Fetches the Google Sheet CSV live, parses, caches, and returns routes.
+ * Gracefully falls back to cache or static defaults if network is offline.
  */
 export const fetchRoutes = async (): Promise<RouteConfig[]> => {
   try {
-    if (SHEETS_CSV_URL === 'YOUR_GOOGLE_SHEETS_CSV_URL') {
-      console.warn('[SheetService] Using demo placeholder URL. Returning mock route lists.');
-      const demoRoutes = getDemoRoutes();
-      await AsyncStorage.setItem(STORAGE_KEY_ROUTES, JSON.stringify(demoRoutes));
-      return demoRoutes;
-    }
-
     const response = await fetch(SHEETS_CSV_URL);
     if (!response.ok) {
       throw new Error(`HTTP Error: ${response.status}`);
@@ -85,22 +75,18 @@ export const fetchRoutes = async (): Promise<RouteConfig[]> => {
       await AsyncStorage.setItem(STORAGE_KEY_ROUTES, JSON.stringify(routes));
       return routes;
     }
-    
+
     throw new Error('Parsed sheet contained no valid routes.');
   } catch (error) {
-    console.warn('[SheetService] Fetch failed, loading from cache:', error);
+    console.warn('[SheetService] Live fetch failed, attempting cache...', error);
     const cached = await getCachedRoutes();
     if (cached && cached.length > 0) {
       return cached;
     }
-    // Final fallback
-    return getDemoRoutes();
+    return getFallbackRoutes();
   }
 };
 
-/**
- * Gets cached routes from AsyncStorage
- */
 export const getCachedRoutes = async (): Promise<RouteConfig[] | null> => {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY_ROUTES);
@@ -114,11 +100,11 @@ export const getCachedRoutes = async (): Promise<RouteConfig[] | null> => {
 };
 
 /**
- * Extracts unique origin and destination names sorted alphabetically.
+ * Dynamically extracts all unique Origin and Destination cities from the live dataset.
  */
 export const getUniqueLocations = (routes: RouteConfig[]): string[] => {
   const set = new Set<string>();
-  routes.forEach(r => {
+  routes.forEach((r) => {
     if (r.origin) set.add(r.origin);
     if (r.destination) set.add(r.destination);
   });
@@ -126,31 +112,48 @@ export const getUniqueLocations = (routes: RouteConfig[]): string[] => {
 };
 
 /**
- * Matches selection to preconfigured routes (case-insensitive)
+ * Matches route selection with optional Date filtering (e.g. "21/07/2026")
  */
 export const matchRoute = (
   routes: RouteConfig[],
   origin: string,
-  destination: string
+  destination: string,
+  date?: string
 ): RouteConfig | null => {
   const oClean = origin.trim().toLowerCase();
   const dClean = destination.trim().toLowerCase();
 
-  const found = routes.find(
-    r => r.origin.toLowerCase() === oClean && r.destination.toLowerCase() === dClean
+  // 1. First try exact Date + Origin + Destination match
+  if (date) {
+    const exactDateMatch = routes.find(
+      (r) =>
+        r.origin.toLowerCase() === oClean &&
+        r.destination.toLowerCase() === dClean &&
+        r.date === date
+    );
+    if (exactDateMatch) return exactDateMatch;
+  }
+
+  // 2. Fallback to any Date matching Origin + Destination
+  const routeMatch = routes.find(
+    (r) => r.origin.toLowerCase() === oClean && r.destination.toLowerCase() === dClean
   );
-  return found || null;
+
+  return routeMatch || null;
 };
 
 /**
- * Returns hardcoded demo routes as a default fallback.
+ * Fallback static routes matching your live Google Sheet data.
  */
-const getDemoRoutes = (): RouteConfig[] => {
+const getFallbackRoutes = (): RouteConfig[] => {
   return [
-    { origin: 'Saddar', destination: 'Clifton', distanceKm: 5.2, acFare: 250, nonAcFare: 180 },
-    { origin: 'Saddar', destination: 'Gulshan', distanceKm: 12.0, acFare: 500, nonAcFare: 400 },
-    { origin: 'Gulshan', destination: 'Clifton', distanceKm: 15.4, acFare: 650, nonAcFare: 500 },
-    { origin: 'DHA', destination: 'Saddar', distanceKm: 8.5, acFare: 350, nonAcFare: 250 },
-    { origin: 'DHA', destination: 'Gulshan', distanceKm: 18.2, acFare: 750, nonAcFare: 600 },
+    { date: '21/07/2026', origin: 'Islamabad', destination: 'Karak', distanceKm: 0, acFare: 1800, nonAcFare: 1500 },
+    { date: '21/07/2026', origin: 'Islamabad', destination: 'Kohat', distanceKm: 0, acFare: 1400, nonAcFare: 1100 },
+    { date: '21/07/2026', origin: 'Islamabad', destination: 'Peshawar', distanceKm: 0, acFare: 1300, nonAcFare: 1000 },
+    { date: '21/07/2026', origin: 'Islamabad', destination: 'DI Khan', distanceKm: 0, acFare: 2200, nonAcFare: 1900 },
+    { date: '21/07/2026', origin: 'Karak', destination: 'Islamabad', distanceKm: 0, acFare: 1800, nonAcFare: 1500 },
+    { date: '21/07/2026', origin: 'Kohat', destination: 'Islamabad', distanceKm: 0, acFare: 1400, nonAcFare: 1100 },
+    { date: '21/07/2026', origin: 'Peshawar', destination: 'Islamabad', distanceKm: 0, acFare: 1300, nonAcFare: 1000 },
+    { date: '21/07/2026', origin: 'DI Khan', destination: 'Islamabad', distanceKm: 0, acFare: 2200, nonAcFare: 1900 },
   ];
 };

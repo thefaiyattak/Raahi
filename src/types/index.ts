@@ -51,6 +51,7 @@ export interface DistanceMatrixResponse {
 }
 
 export interface RouteConfig {
+  date?: string;
   origin: string;
   destination: string;
   distanceKm: number;
