@@ -61,7 +61,13 @@ export default function HomeScreen({
   const [bagsCount, setBagsCount] = useState('1');
   const [passengersCount, setPassengersCount] = useState('1');
   const [isAC, setIsAC] = useState(true);
-  const [departureTime, setDepartureTime] = useState('14:00');
+  const [departureTime, setDepartureTime] = useState('14:00 to 15:00');
+
+  const handleOpenBookModal = () => {
+    setBookFrom(filterFromCity || '');
+    setBookTo(filterToCity || '');
+    setShowBookFormModal(true);
+  };
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -268,7 +274,7 @@ export default function HomeScreen({
             <Text style={styles.actionBtnText}>Post a Ride Offer</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.bookRideBtn} onPress={() => setShowBookFormModal(true)}>
+          <TouchableOpacity style={styles.bookRideBtn} onPress={handleOpenBookModal}>
             <Icon name="plus-circle" size={22} color="#FFFFFF" style={{ marginRight: 8 }} />
             <Text style={styles.actionBtnText}>Post a Seat Request</Text>
           </TouchableOpacity>

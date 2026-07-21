@@ -51,6 +51,7 @@ export default function CreateRideScreen({
   
   const [isAC, setIsAC] = useState(false);
   const [seatsAvailable, setSeatsAvailable] = useState('3');
+  const [departureTime, setDepartureTime] = useState('14:00 to 15:00');
 
   // Dropdown Modal helper state
   const [modalVisible, setModalVisible] = useState(false);
@@ -218,7 +219,7 @@ export default function CreateRideScreen({
         vehicleDetails: driverProfile.vehicleName + ' - ' + driverProfile.vehicleModel,
         isAC,
         seatsAvailable: parseInt(seatsAvailable, 10) || 3,
-        departureTime: '14:00', // Default 2:00 PM departure window
+        departureTime: departureTime.trim() || '14:00 to 15:00',
         departureTimestamp: now + 2 * 60 * 60 * 1000,
         farePerSeat: calculatedFare,
         createdAt: now,
@@ -350,6 +351,15 @@ export default function CreateRideScreen({
               <Text style={styles.totalLabel}>Fare per seat:</Text>
               <Text style={styles.totalValue}>Rs. {calculatedFare.toFixed(2)}</Text>
             </View>
+
+            {/* Departure Time Input */}
+            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Departure Time</Text>
+            <TextInput
+              style={styles.detailInput}
+              value={departureTime}
+              onChangeText={setDepartureTime}
+              placeholder="e.g. 14:00 to 15:00"
+            />
 
             {/* Seats Count Input */}
             <Text style={[styles.inputLabel, { marginTop: 12 }]}>Available Seats</Text>
