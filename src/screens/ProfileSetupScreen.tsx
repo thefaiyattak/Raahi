@@ -8,8 +8,10 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '../components/AppIcon';
 import { UserProfile } from '../types';
 import { saveUserProfile } from '../services/storage';
 import { saveProfileToFirebase } from '../services/dbService';
@@ -17,7 +19,7 @@ import { saveProfileToFirebase } from '../services/dbService';
 interface ProfileSetupScreenProps {
   uid: string;
   email: string;
-  _photoUrl: string;
+  photoUrl: string;
   onProfileComplete: (profile: UserProfile) => void;
 }
 
@@ -34,7 +36,7 @@ const AVATARS = [
 export default function ProfileSetupScreen({
   uid,
   email,
-  _photoUrl,
+  photoUrl,
   onProfileComplete,
 }: ProfileSetupScreenProps) {
   const [fullName, setFullName] = useState('');
@@ -187,7 +189,8 @@ export default function ProfileSetupScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   container: {
     padding: 24,
@@ -248,21 +251,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 6,
-    marginTop: 14,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: '#374151',
+    marginBottom: 4,
+    marginTop: 10,
   },
   input: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAF8',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 15,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
     color: '#111827',
+    height: 42,
   },
   hintText: {
     fontSize: 11,

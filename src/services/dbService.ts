@@ -138,3 +138,60 @@ export const updateBookingRequestStatusLocal = async (
     }
   }
 };
+
+// ==========================================
+// 3. EDIT & DELETE USER POSTS (MY RIDES)
+// ==========================================
+
+export const getMyOfferRidePostsLocal = async (userUid: string): Promise<OfferRidePost[]> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
+  if (!raw) return [];
+  const posts: OfferRidePost[] = JSON.parse(raw);
+  return posts.filter((p) => p.driverUid === userUid);
+};
+
+export const getMyBookRidePostsLocal = async (userUid: string): Promise<BookRidePost[]> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
+  if (!raw) return [];
+  const posts: BookRidePost[] = JSON.parse(raw);
+  return posts.filter((p) => p.passengerUid === userUid);
+};
+
+export const updateOfferRidePostLocal = async (updatedPost: OfferRidePost): Promise<void> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
+  if (!raw) return;
+  let posts: OfferRidePost[] = JSON.parse(raw);
+  const index = posts.findIndex((p) => p.id === updatedPost.id);
+  if (index !== -1) {
+    posts[index] = updatedPost;
+    await AsyncStorage.setItem(KEYS.LOCAL_OFFER_RIDE_POSTS, JSON.stringify(posts));
+  }
+};
+
+export const deleteOfferRidePostLocal = async (postId: string): Promise<void> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
+  if (!raw) return;
+  let posts: OfferRidePost[] = JSON.parse(raw);
+  posts = posts.filter((p) => p.id !== postId);
+  await AsyncStorage.setItem(KEYS.LOCAL_OFFER_RIDE_POSTS, JSON.stringify(posts));
+};
+
+export const updateBookRidePostLocal = async (updatedPost: BookRidePost): Promise<void> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
+  if (!raw) return;
+  let posts: BookRidePost[] = JSON.parse(raw);
+  const index = posts.findIndex((p) => p.id === updatedPost.id);
+  if (index !== -1) {
+    posts[index] = updatedPost;
+    await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(posts));
+  }
+};
+
+export const deleteBookRidePostLocal = async (postId: string): Promise<void> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
+  if (!raw) return;
+  let posts: BookRidePost[] = JSON.parse(raw);
+  posts = posts.filter((p) => p.id !== postId);
+  await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(posts));
+};
+

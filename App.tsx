@@ -6,6 +6,9 @@ import CreateRideScreen from './src/screens/CreateRideScreen';
 import TripViewerScreen from './src/screens/TripViewerScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import NotificationScreen from './src/screens/NotificationScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { initialize as initLinking } from './src/services/linkingService';
 import { initializeFareRates, subscribeToFareUpdates } from './src/services/fareEngine';
@@ -13,9 +16,12 @@ import { getAuthSession, AuthSession } from './src/services/authService';
 import { getUserProfile } from './src/services/storage';
 import { TripData, UserProfile } from './src/types';
 
-type ScreenType = 'home' | 'vehicle_config' | 'create_ride' | 'trip_viewer';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
-export default function App() {
+type ScreenType = 'home' | 'vehicle_config' | 'create_ride' | 'trip_viewer' | 'profile' | 'settings' | 'notifications';
+
+function AppContent() {
+  const { theme } = useTheme();
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('home');
   const [activeTrip, setActiveTrip] = useState<TripData | null>(null);
 
@@ -92,12 +98,18 @@ export default function App() {
     }
   };
 
+  const handleSignOut = () => {
+    setAuthSession(null);
+    setUserProfile(null);
+    setCurrentScreen('home');
+  };
+
   const renderScreen = () => {
     // 1. If session still loading, display progress loader
     if (isLoadingSession) {
       return (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#43A047" />
+        <View style={[styles.center, { backgroundColor: theme.background }]}>
+          <ActivityIndicator size="large" color={theme.primary} />
         </View>
       );
     }
@@ -121,6 +133,20 @@ export default function App() {
 
     // 4. Otherwise, display the application dashboard
     switch (currentScreen) {
+      case 'profile':
+        return (
+          <ProfileScreen
+            userProfile={userProfile}
+            onProfileUpdated={(updated) => setUserProfile(updated)}
+            onNavigateToVehicleConfig={() => navigateTo('vehicle_config')}
+            onNavigateToSettings={() => navigateTo('settings')}
+            onBack={handleBack}
+          />
+        );
+      case 'settings':
+        return <SettingsScreen onBack={handleBack} onSignOut={handleSignOut} onNavigateToProfile={() => navigateTo('profile')} />;
+      case 'notifications':
+        return <NotificationScreen onBack={handleBack} />;
       case 'vehicle_config':
         return <VehicleConfigScreen onBack={handleBack} />;
       case 'create_ride':
@@ -138,17 +164,17 @@ export default function App() {
         }
         return (
           <HomeScreen
-            userProfile={userProfile!}
+            userProfile={userProfile}
             onNavigateToCreateRide={(from, to) => {
               setSelectedFromCity(from || '');
               setSelectedToCity(to || '');
               navigateTo('create_ride');
             }}
             onNavigateToVehicleConfig={() => navigateTo('vehicle_config')}
-            onSignOut={() => {
-              setAuthSession(null);
-              setUserProfile(null);
-            }}
+            onNavigateToProfile={() => navigateTo('profile')}
+            onNavigateToSettings={() => navigateTo('settings')}
+            onNavigateToNotifications={() => navigateTo('notifications')}
+            onSignOut={handleSignOut}
           />
         );
       case 'home':
@@ -162,10 +188,10 @@ export default function App() {
               navigateTo('create_ride');
             }}
             onNavigateToVehicleConfig={() => navigateTo('vehicle_config')}
-            onSignOut={() => {
-              setAuthSession(null);
-              setUserProfile(null);
-            }}
+            onNavigateToProfile={() => navigateTo('profile')}
+            onNavigateToSettings={() => navigateTo('settings')}
+            onNavigateToNotifications={() => navigateTo('notifications')}
+            onSignOut={handleSignOut}
           />
         );
     }
@@ -173,9 +199,23 @@ export default function App() {
 
   return (
     <ErrorBoundary onReset={() => setCurrentScreen('home')}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      {renderScreen()}
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} translucent={false} />
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        {renderScreen()}
+      </View>
     </ErrorBoundary>
+  );
+}
+
+import { LanguageProvider } from './src/i18n/LanguageContext';
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }
 
@@ -184,6 +224,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
   },
 });

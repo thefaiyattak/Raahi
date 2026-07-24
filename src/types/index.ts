@@ -1,8 +1,12 @@
 export interface DriverProfile {
+  driverName?: string;      // e.g., "Faisal Ahmed"
   vehicleName: string;      // e.g., "Toyota"
   vehicleModel: string;     // e.g., "Camry 2023"
   phoneNumber: string;      // E.164 format: +1234567890
   defaultACStatus: boolean; // true = AC tier default
+  licenseNumber?: string;   // e.g. "LHR-2021-998812"
+  drivingLicenseUri?: string; // Image URI or demo base64
+  isLicenseVerified?: boolean;
 }
 
 export interface FareRates {
@@ -66,6 +70,38 @@ export interface EmergencyContact {
   relation?: string;
 }
 
+export interface UserReview {
+  id: string;
+  targetUid: string;
+  targetName: string;
+  reviewerUid: string;
+  reviewerName: string;
+  reviewerRole: 'driver' | 'passenger';
+  rating: number; // 1 to 5
+  comment: string;
+  date: string;
+  createdAt: number;
+  isEdited?: boolean;
+  tripVerified?: boolean;
+}
+
+export interface VerificationDetails {
+  cnicNumber?: string;
+  cnicFrontUri?: string;
+  cnicBackUri?: string;
+  isCNICVerified?: boolean;
+  phoneVerified?: boolean;
+  drivingLicenseNumber?: string;
+  drivingLicenseFrontUri?: string;
+  drivingLicenseBackUri?: string;
+  isLicenseVerified?: boolean;
+  vehicleRegistrationNumber?: string;
+  vehicleRegistrationUri?: string;
+  isVehicleRegistrationVerified?: boolean;
+  isVerified?: boolean;
+  verifiedAt?: number;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -74,6 +110,8 @@ export interface UserProfile {
   profilePicture: string; // URL, avatar name, or local asset path
   bloodGroup: string;
   emergencyContacts?: EmergencyContact[];
+  isVerified?: boolean;
+  verification?: VerificationDetails;
 }
 
 export interface OfferRidePost {
@@ -121,3 +159,23 @@ export interface BookingRequest {
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
 }
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'booking' | 'offer' | 'system' | 'emergency';
+  timestamp: number;
+  read: boolean;
+}
+
+export interface AppSettings {
+  darkMode: boolean;
+  pushNotifications: boolean;
+  rideAlerts: boolean;
+  smsAlerts: boolean;
+  soundEnabled: boolean;
+  language: 'English' | 'Urdu';
+  defaultCity: string;
+}
+

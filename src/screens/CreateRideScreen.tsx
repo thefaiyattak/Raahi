@@ -13,9 +13,14 @@ import {
   Clipboard,
   Modal,
   FlatList,
+  TouchableWithoutFeedback,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { getDriverProfile } from '../services/storage';
+import Icon from '../components/AppIcon';
+import { useTheme } from '../theme/ThemeContext';
+import { useLanguage } from '../i18n/LanguageContext';
+import { getDriverProfile, getUserProfile } from '../services/storage';
 import { fetchRoutes, getUniqueLocations, matchRoute } from '../services/sheetService';
 import { encodeTripToDeepLink, generateWhatsAppMessage, openWhatsApp } from '../services/deepLinkService';
 import { saveOfferRidePostLocal } from '../services/dbService';
@@ -34,6 +39,8 @@ export default function CreateRideScreen({
   onBack,
   onNavigateToProfile,
 }: CreateRideScreenProps) {
+  const { theme } = useTheme();
+  const { t, isUrdu, getTextStyle } = useLanguage();
   const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
@@ -134,12 +141,18 @@ export default function CreateRideScreen({
   if (!driverProfile) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="arrow-left" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Create a Ride</Text>
-        </View>
+      {/* Top Header */}
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }]}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Icon name="arrow-left" size={24} color={theme.primary} />
+        </TouchableOpacity>
+        <Text style={[styles.title, { color: theme.textPrimary, fontSize: 18, fontWeight: '800' }, getTextStyle()]}>
+          {isUrdu ? 'سفر کی پیشکش تخلیق کریں' : 'Create Ride Offer'}
+        </Text>
+        <TouchableOpacity style={{ padding: 4 }}>
+          <Icon name="help-circle" size={22} color={theme.primary} />
+        </TouchableOpacity>
+      </View>
         <View style={styles.emptyContainer}>
           <Icon name="car-off" size={80} color="#9CA3AF" />
           <Text style={styles.emptyTitle}>No Vehicle Profile</Text>
@@ -206,12 +219,13 @@ export default function CreateRideScreen({
     }
 
     try {
+      const userProf = await getUserProfile();
       const now = Date.now();
       const newPost: OfferRidePost = {
         id: 'offer_' + now,
-        driverUid: driverProfile.phoneNumber,
-        driverName: driverProfile.vehicleName + ' (' + driverProfile.vehicleModel + ')',
-        driverPhone: driverProfile.phoneNumber,
+        driverUid: userProf?.uid || driverProfile.phoneNumber,
+        driverName: driverProfile.driverName || userProf?.fullName || 'Driver',
+        driverPhone: userProf?.phoneNumber || driverProfile.phoneNumber,
         fromCity: selectedOrigin,
         toCity: selectedDestination,
         fromDetails: originDetail,
@@ -251,28 +265,34 @@ export default function CreateRideScreen({
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color="#111827" />
+          <Icon name="arrow-left" size={24} color={theme.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Create a Ride</Text>
+        <Text style={[styles.title, { color: theme.textPrimary, fontSize: 18, fontWeight: '800' }, getTextStyle()]}>
+          {isUrdu ? 'سفر کی پیشکش تخلیق کریں' : 'Create Ride Offer'}
+        </Text>
+        <TouchableOpacity style={{ padding: 4 }}>
+          <Icon name="help-circle" size={22} color={theme.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {/* Route Selectors Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Route & Locations</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+          <Text style={[styles.cardTitle, { color: theme.primary }, getTextStyle()]}>{isUrdu ? 'راستہ اور مقامات' : 'Route & Locations'}</Text>
 
           <View style={styles.routeBox}>
             {/* Origin Picker */}
-            <Text style={styles.inputLabel}>Origin Point</Text>
-            <TouchableOpacity style={styles.pickerSelector} onPress={() => openPicker('origin')}>
-              <Icon name="map-marker" size={20} color="#43A047" style={styles.pickerIcon} />
-              <Text style={[styles.pickerSelectorText, !selectedOrigin ? styles.pickerPlaceholder : null]}>
-                {selectedOrigin || 'Choose Origin Location...'}
+            <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('fromCity')}</Text>
+            <TouchableOpacity style={[styles.pickerSelector, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => openPicker('origin')}>
+              <Icon name="map-marker" size={20} color={theme.primary} style={styles.pickerIcon} />
+              <Text style={[styles.pickerSelectorText, !selectedOrigin ? { color: theme.textMuted } : { color: theme.textPrimary }, getTextStyle()]}>
+                {selectedOrigin || t('selectDepartureCity')}
               </Text>
-              <Icon name="chevron-down" size={20} color="#6B7280" />
+              <Icon name="chevron-down" size={20} color={theme.textMuted} />
             </TouchableOpacity>
 
             <TextInput
@@ -340,41 +360,49 @@ export default function CreateRideScreen({
         {/* Fare Summary Card */}
         {matchedRouteConfig && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Fare Summary (From Google Sheet)</Text>
+            <Text style={styles.cardTitle}>Fare Summary (Per Seat)</Text>
             
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Tier Option:</Text>
-              <Text style={styles.summaryValue}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: '#6B7280' }}>Tier</Text>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#2E7D32' }}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
             </View>
 
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Fare per seat:</Text>
-              <Text style={styles.totalValue}>Rs. {calculatedFare.toFixed(2)}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 13, color: '#6B7280' }}>Fare</Text>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: '#2E7D32' }}>Rs. {calculatedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
             </View>
 
             {/* Departure Time Input */}
-            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Departure Time</Text>
-            <TextInput
-              style={styles.detailInput}
-              value={departureTime}
-              onChangeText={setDepartureTime}
-              placeholder="e.g. 14:00 to 15:00"
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 12 }}>
+              <Icon name="clock-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+              <Text style={{ fontSize: 12, color: '#374151', marginRight: 8, fontWeight: '600' }}>Departure Time</Text>
+              <TextInput
+                style={{ flex: 1, fontSize: 13, color: '#111827', textAlign: 'right', fontWeight: '700' }}
+                value={departureTime}
+                onChangeText={setDepartureTime}
+                placeholder="14:00 to 15:00"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
 
             {/* Seats Count Input */}
-            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Available Seats</Text>
-            <TextInput
-              style={styles.detailInput}
-              keyboardType="numeric"
-              value={seatsAvailable}
-              onChangeText={setSeatsAvailable}
-              placeholder="e.g. 3"
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 16 }}>
+              <Icon name="account-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+              <Text style={{ fontSize: 12, color: '#374151', marginRight: 8, fontWeight: '600' }}>Available Seats</Text>
+              <TextInput
+                style={{ flex: 1, fontSize: 13, color: '#111827', textAlign: 'right', fontWeight: '700' }}
+                keyboardType="numeric"
+                value={seatsAvailable}
+                onChangeText={setSeatsAvailable}
+                placeholder="3 Seats"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
 
             {/* Primary Post Button */}
-            <TouchableOpacity style={styles.postRideButton} onPress={handlePostRideOffer}>
+            <TouchableOpacity style={{ backgroundColor: '#2E7D32', borderRadius: 12, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }} onPress={handlePostRideOffer}>
               <Icon name="check-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.postRideButtonText}>Post Ride Offer</Text>
+              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Post Ride Offer</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -384,77 +412,86 @@ export default function CreateRideScreen({
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Message Preview</Text>
             
-            <View style={styles.previewBox}>
-              <Text style={styles.previewText} numberOfLines={8}>
-                {generatedMessage}
+            <View style={{ backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 14 }}>
+              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                🚗 *Raahi Available!*{'\n'}
+                📍 *From:* {selectedOrigin}{'\n'}
+                🏁 *To:* {selectedDestination}{'\n'}
+                💰 *Fare:* Rs. {calculatedFare.toFixed(2)}{'\n'}
+                ❄️ *Tier:* {isAC ? 'AC Premium' : 'Non-AC'}{'\n'}
+                ⏰ *Time:* {departureTime}{'\n'}
+                👥 *Seats:* {seatsAvailable}
               </Text>
             </View>
 
-            <View style={styles.copyButtonsRow}>
-              <TouchableOpacity style={styles.copyButton} onPress={handleCopyMessage}>
-                <Icon name="message-text-outline" size={16} color="#43A047" />
-                <Text style={styles.copyButtonText}>Copy Message</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity
+                style={{ flex: 1, height: 42, borderWidth: 1, borderColor: '#2E7D32', borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+                onPress={handleCopyMessage}
+              >
+                <Icon name="content-copy" size={16} color="#2E7D32" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#2E7D32', fontSize: 13, fontWeight: '700' }}>Copy Message</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.copyButton} onPress={handleCopyLink}>
-                <Icon name="link-variant" size={16} color="#43A047" />
-                <Text style={styles.copyButtonText}>Copy Link</Text>
+              <TouchableOpacity
+                style={{ flex: 1, height: 42, borderWidth: 1, borderColor: '#25D366', borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}
+                onPress={handleShareWhatsApp}
+              >
+                <Icon name="whatsapp" size={18} color="#25D366" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#25D366', fontSize: 13, fontWeight: '700' }}>Share on WhatsApp</Text>
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity style={styles.whatsappButton} onPress={handleShareWhatsApp}>
-              <Icon name="whatsapp" size={20} color="#FFFFFF" />
-              <Text style={styles.whatsappButtonText}>Share on WhatsApp</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
-              <Text style={styles.resetButtonText}>Reset Form</Text>
-            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
 
       {/* Location Selector Modal */}
-      <Modal animationType="slide" transparent={true} visible={modalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Select {activePicker === 'origin' ? 'Origin' : 'Destination'}
-              </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Icon name="close" size={24} color="#111827" />
-              </TouchableOpacity>
-            </View>
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalVisible(false)}
+        >
+          <TouchableWithoutFeedback>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Select {activePicker === 'origin' ? 'Origin' : 'Destination'}
+                </Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Icon name="close" size={24} color="#111827" />
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.searchBarContainer}>
-              <Icon name="magnify" size={20} color="#9CA3AF" />
-              <TextInput
-                style={styles.searchBar}
-                placeholder="Search location..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
+              <View style={styles.searchBarContainer}>
+                <Icon name="magnify" size={20} color="#9CA3AF" />
+                <TextInput
+                  style={styles.searchBar}
+                  placeholder="Search location..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <FlatList
+                data={filteredLocations}
+                keyExtractor={(item) => item}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.locationItem} onPress={() => handleSelectLocation(item)}>
+                    <Icon name="map-marker-outline" size={20} color="#6B7280" />
+                    <Text style={styles.locationItemText}>{item}</Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyList}>
+                    <Text style={styles.emptyListText}>No locations match your search.</Text>
+                  </View>
+                }
               />
             </View>
-
-            <FlatList
-              data={filteredLocations}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.locationItem} onPress={() => handleSelectLocation(item)}>
-                  <Icon name="map-marker-outline" size={20} color="#6B7280" />
-                  <Text style={styles.locationItemText}>{item}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyList}>
-                  <Text style={styles.emptyListText}>No locations match your search.</Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -463,7 +500,8 @@ export default function CreateRideScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   centerContainer: {
     flex: 1,
@@ -498,9 +536,9 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
@@ -508,38 +546,43 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: '#6B7280',
     textTransform: 'uppercase',
-    marginBottom: 16,
+    letterSpacing: 0.5,
+    marginBottom: 12,
   },
   routeBox: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     color: '#374151',
-    marginBottom: 6,
+    marginBottom: 4,
+    marginTop: 6,
   },
   pickerSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAF8',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 10,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    height: 42,
   },
   pickerIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   pickerSelectorText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 13,
     color: '#111827',
     fontWeight: '500',
   },
@@ -547,15 +590,16 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
   },
   detailInput: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAF8',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    fontSize: 14,
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    fontSize: 13,
     color: '#111827',
-    marginBottom: 16,
+    marginBottom: 12,
+    height: 40,
   },
   routeDivider: {
     height: 1,
@@ -781,29 +825,32 @@ const styles = StyleSheet.create({
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
+    backgroundColor: '#F8FAF8',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 12,
-    marginBottom: 16,
+    marginBottom: 12,
+    height: 40,
   },
   searchBar: {
     flex: 1,
-    height: 44,
+    height: 40,
     color: '#111827',
-    fontSize: 15,
-    marginLeft: 8,
+    fontSize: 13,
+    marginLeft: 6,
   },
   locationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F8F9FA',
   },
   locationItemText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#111827',
-    marginLeft: 12,
+    marginLeft: 10,
   },
   emptyList: {
     paddingVertical: 30,

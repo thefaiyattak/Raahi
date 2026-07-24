@@ -10,7 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '../components/AppIcon';
 import { TripData } from '../types';
 import { openWhatsApp, shareTrip } from '../services/deepLinkService';
 import { formatFare } from '../services/fareEngine';

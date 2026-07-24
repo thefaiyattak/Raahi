@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DriverProfile, UserProfile } from '../types';
+import { DriverProfile, UserProfile, UserReview } from '../types';
 
 const STORAGE_KEY = '@driver_profile';
 const STORAGE_KEY_USER = '@user_profile';
@@ -100,6 +100,29 @@ export const clearDriverProfile = async (): Promise<void> => {
   }
 };
 
+export const deleteDriverProfile = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    const userRaw = await AsyncStorage.getItem(STORAGE_KEY_USER);
+    if (userRaw) {
+      const user = JSON.parse(userRaw);
+      delete user.driverProfile;
+      delete user.vehicleDetails;
+      if (user.verification) {
+        delete user.verification.drivingLicenseNumber;
+        delete user.verification.drivingLicenseFrontUri;
+        delete user.verification.drivingLicenseBackUri;
+        delete user.verification.vehicleRegistrationNumber;
+        delete user.verification.vehicleRegistrationUri;
+      }
+      await AsyncStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+    }
+  } catch (error) {
+    console.error('[StorageService] Error deleting driver profile:', error);
+    throw new Error('Failed to delete driver profile.');
+  }
+};
+
 export const saveUserProfile = async (profile: UserProfile): Promise<void> => {
   try {
     if (!profile.fullName || profile.fullName.trim().length < 2) {
@@ -133,5 +156,88 @@ export const clearUserProfile = async (): Promise<void> => {
   } catch (error) {
     console.error(`[StorageService] Error clearing user profile:`, error);
     throw new Error('Failed to clear user profile.');
+  }
+};
+
+const STORAGE_KEY_REVIEWS = '@public_user_reviews';
+
+const INITIAL_REVIEWS: UserReview[] = [
+  {
+    id: 'rev_1',
+    targetUid: 'demo_user_1',
+    targetName: 'Faisal Test 1',
+    reviewerUid: 'user_usman',
+    reviewerName: 'Usman Khan',
+    reviewerRole: 'passenger',
+    rating: 5,
+    comment: 'Punctual driver, clean car with full AC, very polite conversation throughout the highway travel!',
+    date: 'Jul 21, 2026',
+    createdAt: Date.now() - 86400000 * 2,
+  },
+  {
+    id: 'rev_2',
+    targetUid: 'demo_user_1',
+    targetName: 'Faisal Test 1',
+    reviewerUid: 'user_ali',
+    reviewerName: 'Ali Raza',
+    reviewerRole: 'passenger',
+    rating: 5,
+    comment: 'Great ride experience! Picked us up right on time at Kalma Chowk.',
+    date: 'Jul 19, 2026',
+    createdAt: Date.now() - 86400000 * 4,
+  },
+  {
+    id: 'rev_3',
+    targetUid: 'demo_user_1',
+    targetName: 'Faisal Test 1',
+    reviewerUid: 'user_bilal',
+    reviewerName: 'Bilal Ahmed',
+    reviewerRole: 'driver',
+    rating: 4,
+    comment: 'Respectful passenger, paid exact fare, smooth trip from Islamabad to Lahore.',
+    date: 'Jul 15, 2026',
+    createdAt: Date.now() - 86400000 * 7,
+  },
+];
+
+export const getPublicReviewsLocal = async (): Promise<UserReview[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY_REVIEWS);
+    if (!raw) {
+      await AsyncStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(INITIAL_REVIEWS));
+      return INITIAL_REVIEWS;
+    }
+    return JSON.parse(raw) as UserReview[];
+  } catch (e) {
+    return INITIAL_REVIEWS;
+  }
+};
+
+export const savePublicReviewLocal = async (review: UserReview): Promise<void> => {
+  try {
+    const current = await getPublicReviewsLocal();
+    const updated = [review, ...current];
+    await AsyncStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(updated));
+  } catch (e: any) {
+    throw new Error('Failed to save review');
+  }
+};
+
+export const updatePublicReviewLocal = async (reviewId: string, updatedFields: Partial<UserReview>): Promise<void> => {
+  try {
+    const current = await getPublicReviewsLocal();
+    const updated = current.map((r) => {
+      if (r.id === reviewId) {
+        return {
+          ...r,
+          ...updatedFields,
+          isEdited: true,
+        };
+      }
+      return r;
+    });
+    await AsyncStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(updated));
+  } catch (e: any) {
+    throw new Error('Failed to update review');
   }
 };

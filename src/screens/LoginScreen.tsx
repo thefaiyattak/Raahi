@@ -7,8 +7,10 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '../components/AppIcon';
 import { signInWithGoogle, mockSignIn, AuthSession } from '../services/authService';
 
 interface LoginScreenProps {
@@ -102,7 +104,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   container: {
     flex: 1,
@@ -116,33 +119,33 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     backgroundColor: '#E8F5E9',
-    padding: 20,
-    borderRadius: 32,
-    marginBottom: 20,
+    padding: 16,
+    borderRadius: 24,
+    marginBottom: 14,
     shadowColor: '#43A047',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 3,
   },
   appName: {
-    fontSize: 40,
-    fontWeight: '900',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#111827',
     letterSpacing: 0.5,
   },
   tagline: {
-    fontSize: 16,
+    fontSize: 13,
     color: '#6B7280',
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   featuresCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 14,
+    padding: 18,
     width: '100%',
-    marginVertical: 40,
+    marginVertical: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
@@ -183,8 +186,8 @@ const styles = StyleSheet.create({
   googleButton: {
     backgroundColor: '#43A047',
     width: '100%',
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -193,11 +196,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   googleButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   mockButton: {
@@ -205,15 +208,15 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E65100',
     width: '100%',
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   mockButtonText: {
     color: '#E65100',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   buttonIcon: {

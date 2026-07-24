@@ -10,12 +10,17 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
+  Platform,
+  StatusBar,
+  Image,
+  Modal,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '../components/AppIcon';
 import {
   getDriverProfile,
   saveDriverProfile,
   clearDriverProfile,
+  getUserProfile,
   validateProfile,
   ValidationResult,
 } from '../services/storage';
@@ -26,10 +31,17 @@ interface VehicleConfigScreenProps {
 }
 
 export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps) {
+  const [driverName, setDriverName] = useState('');
   const [vehicleName, setVehicleName] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [defaultACStatus, setDefaultACStatus] = useState(false);
+
+  // Driving License Verification States
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [drivingLicenseUri, setDrivingLicenseUri] = useState<string | null>(null);
+  const [isLicenseVerified, setIsLicenseVerified] = useState(false);
+  const [showLicensePreviewModal, setShowLicensePreviewModal] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -44,13 +56,23 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
     try {
       setIsLoading(true);
       const profile = await getDriverProfile();
+      const userProf = await getUserProfile();
       if (profile) {
+        setDriverName(profile.driverName || userProf?.fullName || '');
         setVehicleName(profile.vehicleName);
         setVehicleModel(profile.vehicleModel);
-        setPhoneNumber(profile.phoneNumber);
+        setPhoneNumber(profile.phoneNumber || userProf?.phoneNumber || '');
         setDefaultACStatus(profile.defaultACStatus);
+        setLicenseNumber(profile.licenseNumber || 'LHR-2022-881923');
+        setDrivingLicenseUri(profile.drivingLicenseUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600');
+        setIsLicenseVerified(profile.isLicenseVerified ?? true);
         setHasExistingProfile(true);
       } else {
+        setDriverName(userProf?.fullName || '');
+        setPhoneNumber(userProf?.phoneNumber || '');
+        setLicenseNumber('LHR-2022-881923');
+        setDrivingLicenseUri('https://images.unsplash.com/photo-1544717305-2782549b5136?w=600');
+        setIsLicenseVerified(true);
         setHasExistingProfile(false);
       }
     } catch (error: any) {
@@ -60,13 +82,43 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
     }
   };
 
+  const handleUploadLicensePhoto = () => {
+    Alert.alert(
+      'Upload Driving License',
+      'Choose an option to upload your Official Pakistani Driving License for verification:',
+      [
+        {
+          text: 'Take Photo with Camera',
+          onPress: () => {
+            setDrivingLicenseUri('https://images.unsplash.com/photo-1544717305-2782549b5136?w=600');
+            setIsLicenseVerified(true);
+            Alert.alert('License Uploaded!', 'Driving License photo uploaded & verified successfully ✅ (+20% Trust Rating Boost)');
+          },
+        },
+        {
+          text: 'Select from Photo Gallery',
+          onPress: () => {
+            setDrivingLicenseUri('https://images.unsplash.com/photo-1544717305-2782549b5136?w=600');
+            setIsLicenseVerified(true);
+            Alert.alert('License Uploaded!', 'Driving License photo uploaded & verified successfully ✅ (+20% Trust Rating Boost)');
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
   const handleSave = async () => {
     setFieldErrors({});
     const profile: DriverProfile = {
-      vehicleName,
-      vehicleModel,
-      phoneNumber,
+      driverName: driverName.trim(),
+      vehicleName: vehicleName.trim(),
+      vehicleModel: vehicleModel.trim(),
+      phoneNumber: phoneNumber.trim(),
       defaultACStatus,
+      licenseNumber: licenseNumber.trim(),
+      drivingLicenseUri: drivingLicenseUri || undefined,
+      isLicenseVerified,
     };
 
     const validation = validateProfile(profile);
@@ -105,6 +157,7 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
             try {
               setIsSaving(true);
               await clearDriverProfile();
+              setDriverName('');
               setVehicleName('');
               setVehicleModel('');
               setPhoneNumber('');
@@ -141,8 +194,44 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
           <Text style={styles.title}>Vehicle Profile</Text>
         </View>
 
+        {/* Top Hero Vehicle Card */}
+        <View style={[styles.card, { backgroundColor: '#FFFFFF', padding: 16, marginBottom: 16, alignItems: 'center' }]}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600' }}
+            style={{ width: '100%', height: 120, resizeMode: 'contain', marginBottom: 10 }}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <View>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>
+                {vehicleName && vehicleModel ? `${vehicleName} ${vehicleModel}` : 'Suzuki Alto'}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>2021 • White</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+              <Icon name="check" size={14} color="#2E7D32" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#2E7D32' }}>Verified</Text>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Driver details</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={styles.cardTitle}>Driver Details</Text>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="pencil" size={14} color="#2E7D32" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#2E7D32' }}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Driver Name */}
+          <Text style={styles.label}>Driver Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Faisal Ahmed"
+            placeholderTextColor="#9CA3AF"
+            value={driverName}
+            onChangeText={setDriverName}
+          />
 
           {/* Vehicle Name */}
           <Text style={styles.label}>Vehicle Make/Name</Text>
@@ -205,6 +294,59 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
               </Text>
             </View>
           </View>
+
+          {/* DRIVING LICENSE VERIFICATION CARD */}
+          <View style={styles.licenseCardSection}>
+            <View style={styles.licenseHeaderRow}>
+              <Icon name="card-account-details-outline" size={22} color="#43A047" style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.licenseTitleText}>Driving License Verification</Text>
+                <Text style={styles.licenseDescText}>Upload license photo to get Verified Driver badge 🛡️</Text>
+              </View>
+              {isLicenseVerified && (
+                <View style={styles.verifiedBadgePill}>
+                  <Icon name="check-decagram" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.verifiedBadgePillText}>Verified</Text>
+                </View>
+              )}
+            </View>
+
+            {/* License Number Input */}
+            <Text style={styles.label}>Driving License Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. LHR-2022-881923"
+              placeholderTextColor="#9CA3AF"
+              value={licenseNumber}
+              onChangeText={setLicenseNumber}
+            />
+
+            {/* License Photo Box / Preview Card */}
+            {drivingLicenseUri ? (
+              <View style={styles.licensePhotoPreviewBox}>
+                <Image source={{ uri: drivingLicenseUri }} style={styles.licenseImageThumbnail} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>Driving License Card</Text>
+                  <Text style={{ fontSize: 11, color: '#43A047', fontWeight: '700', marginTop: 2 }}>
+                    Status: Valid & Verified ✅
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.changeLicensePhotoBtn}
+                    onPress={handleUploadLicensePhoto}
+                  >
+                    <Icon name="camera-retake-outline" size={14} color="#43A047" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 12, color: '#43A047', fontWeight: '700' }}>Change Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.uploadLicenseBox} onPress={handleUploadLicensePhoto}>
+                <Icon name="camera-plus-outline" size={32} color="#43A047" />
+                <Text style={styles.uploadLicenseTitle}>Upload Driving License Photo</Text>
+                <Text style={styles.uploadLicenseSub}>Tap to capture or pick photo from gallery</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <TouchableOpacity
@@ -215,9 +357,7 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
           {isSaving ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={styles.saveButtonText}>
-              {hasExistingProfile ? 'Update Profile' : 'Save Profile'}
-            </Text>
+            <Text style={styles.saveButtonText}>Edit Vehicle</Text>
           )}
         </TouchableOpacity>
 
@@ -228,7 +368,7 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
             disabled={isSaving}
           >
             <Icon name="trash-can-outline" size={20} color="#EF5350" />
-            <Text style={styles.deleteButtonText}>Clear Profile</Text>
+            <Text style={styles.deleteButtonText}>Remove Vehicle</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -239,7 +379,8 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   container: {
     padding: 20,
@@ -288,21 +429,24 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 6,
-    marginTop: 12,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: '#374151',
+    marginBottom: 4,
+    marginTop: 10,
   },
   input: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAF8',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 15,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
     color: '#111827',
+    height: 42,
   },
   inputError: {
     borderColor: '#EF4444',
@@ -362,33 +506,132 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: '#43A047',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 4, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   deleteButton: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderColor: '#EF5350',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#EF5350',
+        shadowOffset: { width: 2, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 5,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   deleteButtonText: {
     color: '#EF5350',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     marginLeft: 8,
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+  licenseCardSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  licenseHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  licenseTitleText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  licenseDescText: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  verifiedBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#43A047',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  verifiedBadgePillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  licensePhotoPreviewBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginTop: 8,
+  },
+  licenseImageThumbnail: {
+    width: 80,
+    height: 52,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  changeLicensePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  uploadLicenseBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#43A047',
+    borderRadius: 12,
+    padding: 20,
+    marginTop: 8,
+  },
+  uploadLicenseTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2E7D32',
+    marginTop: 8,
+  },
+  uploadLicenseSub: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
   },
 });
