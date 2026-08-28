@@ -1,34 +1,47 @@
 export const Colors = {
-  // Primary Greens
-  primary: '#558B2F', // Signature Olive/Sage Green
+  // Dusk Highway Palette
+  ink: '#121212',
+  inkSoft: '#1E1E1E',
+  inkLine: '#2C2C2C',
+  paper: '#F8FAF8',
+  paperSoft: '#EEF3EE',
+  paperLine: '#DCE5DC',
+  marigold: '#43A047',
+  marigoldDeep: '#2E7D32',
+  teal: '#E65100',
+  tealSoft: '#D32F2F',
+  signal: '#D32F2F',
+
+  // Primary System Aliases
+  primary: '#43A047', // Marigold Accent
   primaryDark: '#2E7D32',
   primaryLight: '#81C784',
-  primaryBackground: '#E8F5E9',
-  primaryBorder: '#C8E6C9',
+  primaryBackground: '#EEF3EE',
+  primaryBorder: '#DCE5DC',
 
   // Whites & Neutrals
   white: '#FFFFFF',
   surface: '#FFFFFF',
-  background: '#F4F7F4',
+  background: '#F8FAF8',
   cardBackground: '#FFFFFF',
 
   // Typography
-  textPrimary: '#1C3119',
-  textSecondary: '#5A6E58',
-  textMuted: '#8A9E88',
-  textLight: '#FFFFFF',
+  textPrimary: '#1B1F27',
+  textSecondary: '#5B6270',
+  textMuted: '#8B8D98',
+  textLight: '#F6F1E7',
 
   // Interactive & Accents
-  accent: '#689F38',
-  success: '#388E3C',
-  warning: '#F57C00',
+  accent: '#E65100',
+  success: '#43A047',
+  warning: '#E65100',
   error: '#D32F2F',
-  info: '#1976D2',
+  info: '#1E88E5',
 
   // UI Borders & Dividers
-  border: '#DCE6DC',
-  inputBackground: '#F9FAF9',
-  divider: '#EBF0EB',
+  border: '#DCE5DC',
+  inputBackground: '#F0F4F0',
+  divider: '#EEF3EE',
 };
 
 export default Colors;

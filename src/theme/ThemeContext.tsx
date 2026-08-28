@@ -7,6 +7,9 @@ export interface ThemeColors {
   primaryLight: string;
   primaryBackground: string;
   primaryBorder: string;
+  accent: string;
+  accentLight: string;
+  accentBackground: string;
   white: string;
   surface: string;
   background: string;
@@ -19,49 +22,49 @@ export interface ThemeColors {
   inputBackground: string;
   divider: string;
   icon: string;
+  mutedSurface: string;
+  lightBorder: string;
+  softShadow: string;
+  deepSoftShadow: string;
+  greenShadow: string;
+  greenTint: string;
+  disabledOverlay: string;
   statusBar: 'light-content' | 'dark-content';
 }
 
 export const lightColors: ThemeColors = {
-  primary: '#2E7D32',
-  primaryDark: '#1B5E20',
-  primaryLight: '#A5D6A7',
-  primaryBackground: '#E8F5E9',
-  primaryBorder: '#C8E6C9',
+  primary: '#2F9A3C',
+  primaryDark: '#247D30',
+  primaryLight: '#38AF46',
+  primaryBackground: 'rgba(47, 154, 60, 0.10)',
+  primaryBorder: '#2F9A3C',
+  accent: '#2F9A3C',
+  accentLight: 'rgba(47, 154, 60, 0.10)',
+  accentBackground: 'rgba(47, 154, 60, 0.10)',
   white: '#FFFFFF',
   surface: '#FFFFFF',
-  background: '#F5F7F5',
+  background: '#F2F3F2',
   cardBackground: '#FFFFFF',
-  textPrimary: '#111827',
-  textSecondary: '#4B5563',
-  textMuted: '#9CA3AF',
+  textPrimary: '#262A27',
+  textSecondary: '#8A908B',
+  textMuted: '#8A908B',
   textLight: '#FFFFFF',
-  border: '#E5E7EB',
-  inputBackground: '#F9FAFB',
-  divider: '#F3F4F6',
-  icon: '#2E7D32',
+  border: '#E3E7E3',
+  inputBackground: '#FFFFFF',
+  divider: '#E3E7E3',
+  icon: '#262A27',
+  mutedSurface: '#E9ECE9',
+  lightBorder: '#E3E7E3',
+  softShadow: 'rgba(38, 42, 39, 0.12)',
+  deepSoftShadow: 'rgba(38, 42, 39, 0.18)',
+  greenShadow: 'rgba(47, 154, 60, 0.25)',
+  greenTint: 'rgba(47, 154, 60, 0.10)',
+  disabledOverlay: 'rgba(138, 144, 139, 0.20)',
   statusBar: 'dark-content',
 };
 
 export const darkColors: ThemeColors = {
-  primary: '#7CB342', // High contrast vibrant sage green
-  primaryDark: '#AED581',
-  primaryLight: '#C5E1A5',
-  primaryBackground: '#1C2C1E',
-  primaryBorder: '#2E4730',
-  white: '#FFFFFF',
-  surface: '#1E2B20',
-  background: '#121A13', // Deep dark green-black
-  cardBackground: '#1A261C',
-  textPrimary: '#F1F8F1', // High contrast bright text
-  textSecondary: '#B0CAB2', // Clear readable subtitle text
-  textMuted: '#7E9E81',
-  textLight: '#FFFFFF',
-  border: '#2B3D2D',
-  inputBackground: '#1E2D20',
-  divider: '#253727',
-  icon: '#7CB342', // High contrast icon color
-  statusBar: 'light-content',
+  ...lightColors, // Consistent neumorphic appearance on light theme baseline
 };
 
 interface ThemeContextType {

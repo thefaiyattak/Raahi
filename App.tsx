@@ -18,6 +18,9 @@ import { TripData, UserProfile } from './src/types';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
+import RoleSelectModal from './src/components/RoleSelectModal';
+import { saveUserProfile } from './src/services/storage';
+
 type ScreenType = 'home' | 'vehicle_config' | 'create_ride' | 'trip_viewer' | 'profile' | 'settings' | 'notifications';
 
 function AppContent() {
@@ -33,6 +36,9 @@ function AppContent() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+
+  // Role Selection at App Opening Modal state
+  const [showRoleSelectModal, setShowRoleSelectModal] = useState(false);
 
   useEffect(() => {
     // 1. Initialize fare rates
@@ -75,16 +81,26 @@ function AppContent() {
     }
   };
 
-  const handleLoginSuccess = async (session: AuthSession) => {
+  const handleLoginSuccess = async (session: AuthSession, initialMode?: 'passenger' | 'driver') => {
     setAuthSession(session);
     const profile = await getUserProfile();
     if (profile) {
-      setUserProfile(profile);
+      const updated = { ...profile, activeProfile: initialMode || profile.activeProfile || 'passenger' };
+      setUserProfile(updated);
+      await saveUserProfile(updated);
     }
   };
 
   const handleProfileComplete = (profile: UserProfile) => {
     setUserProfile(profile);
+  };
+
+  const handleRoleSelected = async (role: 'passenger' | 'driver') => {
+    if (userProfile) {
+      const updated = { ...userProfile, activeProfile: role };
+      setUserProfile(updated);
+      await saveUserProfile(updated);
+    }
   };
 
   const navigateTo = (screen: ScreenType) => {
@@ -144,7 +160,15 @@ function AppContent() {
           />
         );
       case 'settings':
-        return <SettingsScreen onBack={handleBack} onSignOut={handleSignOut} onNavigateToProfile={() => navigateTo('profile')} />;
+        return (
+          <SettingsScreen
+            onBack={handleBack}
+            onSignOut={handleSignOut}
+            onNavigateToProfile={() => navigateTo('profile')}
+            onSwitchRole={handleRoleSelected}
+            userProfile={userProfile}
+          />
+        );
       case 'notifications':
         return <NotificationScreen onBack={handleBack} />;
       case 'vehicle_config':
@@ -192,6 +216,11 @@ function AppContent() {
             onNavigateToSettings={() => navigateTo('settings')}
             onNavigateToNotifications={() => navigateTo('notifications')}
             onSignOut={handleSignOut}
+            onToggleProfileMode={async (newMode) => {
+              const updated = { ...userProfile, activeProfile: newMode };
+              setUserProfile(updated);
+              await saveUserProfile(updated);
+            }}
           />
         );
     }

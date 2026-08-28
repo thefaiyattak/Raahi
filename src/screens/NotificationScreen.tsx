@@ -11,7 +11,6 @@ import {
   StatusBar,
 } from 'react-native';
 import Icon from '../components/AppIcon';
-import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AppNotification } from '../types';
 import {
@@ -30,7 +29,6 @@ export default function NotificationScreen({
   onBack,
   onUnreadCountChanged,
 }: NotificationScreenProps) {
-  const { theme } = useTheme();
   const { t, isUrdu, getTextStyle } = useLanguage();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -76,14 +74,14 @@ export default function NotificationScreen({
   const getIconForType = (type: AppNotification['type']) => {
     switch (type) {
       case 'booking':
-        return { name: 'seat-passenger', color: theme.primary };
+        return 'seat-passenger';
       case 'offer':
-        return { name: 'car-side', color: theme.primary };
+        return 'car-side';
       case 'emergency':
-        return { name: 'shield-alert', color: theme.primary };
+        return 'shield-alert';
       case 'system':
       default:
-        return { name: 'information', color: theme.primary };
+        return 'information-outline';
     }
   };
 
@@ -98,31 +96,35 @@ export default function NotificationScreen({
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
-      {/* Top Header */}
-      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Icon name="arrow-left" size={24} color={theme.primary} />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+      {/* Soft UI Elevated Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color="#262A27" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>
+        <Text style={[styles.headerTitle, getTextStyle()]}>
           {t('notifications')}
         </Text>
-        <TouchableOpacity style={{ padding: 4 }}>
-          <Icon name="dots-vertical" size={20} color={theme.textPrimary} />
-        </TouchableOpacity>
+        {unreadCount > 0 ? (
+          <View style={styles.unreadBadgeHeader}>
+            <Text style={styles.unreadBadgeHeaderText}>{unreadCount} new</Text>
+          </View>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
       {/* Action Bar */}
       {notifications.length > 0 && (
-        <View style={[styles.actionBar, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleMarkAllRead}>
-            <Icon name="check-all" size={18} color={theme.primary} />
-            <Text style={[styles.actionBtnText, { color: theme.primary }, getTextStyle()]}>{t('markAllRead')}</Text>
+        <View style={styles.actionBar}>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleMarkAllRead} activeOpacity={0.8}>
+            <Icon name="check-all" size={16} color="#2F9A3C" />
+            <Text style={[styles.actionBtnText, { color: "#2F9A3C" }, getTextStyle()]}>{t('markAllRead')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleClearAll}>
-            <Icon name="trash-can-outline" size={18} color={theme.primary} />
-            <Text style={[styles.actionBtnText, { color: theme.primary }, getTextStyle()]}>{t('clearAll')}</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleClearAll} activeOpacity={0.8}>
+            <Icon name="trash-can-outline" size={16} color="#8A908B" />
+            <Text style={[styles.actionBtnText, { color: "#8A908B" }, getTextStyle()]}>{t('clearAll')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -134,24 +136,30 @@ export default function NotificationScreen({
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Icon name="bell-off-outline" size={48} color={theme.textMuted} />
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }, getTextStyle()]}>
+            <View style={styles.emptyIconContainer}>
+              <Icon name="bell-off-outline" size={28} color="#8A908B" />
+            </View>
+            <Text style={[styles.emptyTitle, getTextStyle()]}>
               {t('noActiveNotifications')}
             </Text>
-            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }, getTextStyle()]}>
+            <Text style={[styles.emptySubtitle, getTextStyle()]}>
               {t('allNotificationsRead')}
             </Text>
           </View>
         }
         renderItem={({ item }) => {
-          const icon = getIconForType(item.type);
+          const iconName = getIconForType(item.type);
           return (
             <TouchableOpacity
-              style={[styles.notifCard, !item.read ? styles.unreadCard : null]}
+              style={[
+                styles.notifCard,
+                !item.read ? styles.notifCardUnread : null,
+              ]}
               onPress={() => handleMarkAsRead(item.id)}
+              activeOpacity={0.85}
             >
-              <View style={styles.iconCircle}>
-                <Icon name={icon.name} size={22} color={icon.color} />
+              <View style={[styles.iconCircle, !item.read ? styles.iconCircleActive : null]}>
+                <Icon name={iconName} size={18} color={!item.read ? "#2F9A3C" : "#8A908B"} />
               </View>
               <View style={styles.notifBody}>
                 <View style={styles.notifHeaderRow}>
@@ -167,35 +175,6 @@ export default function NotificationScreen({
           );
         }}
       />
-      <View style={{ flexDirection: 'row', backgroundColor: theme.cardBackground, borderTopWidth: 1, borderTopColor: theme.border, height: 60, alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4 }}>
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={onBack}>
-          <Icon name="home" size={20} color={theme.textMuted} />
-          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 2, color: theme.textMuted }}>Dashboard</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={onBack}>
-          <Icon name="magnify" size={20} color={theme.textMuted} />
-          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 2, color: theme.textMuted }}>Home</Text>
-        </TouchableOpacity>
-
-        {/* Center Floating Plus Button */}
-        <TouchableOpacity
-          style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center', marginTop: -20, elevation: 4, shadowColor: theme.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6 }}
-          onPress={onBack}
-        >
-          <Icon name="plus" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={onBack}>
-          <Icon name="calendar-check" size={20} color={theme.textMuted} />
-          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 2, color: theme.textMuted }}>Bookings</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={onBack}>
-          <Icon name="account" size={20} color={theme.textMuted} />
-          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 2, color: theme.textMuted }}>Profile</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -203,47 +182,64 @@ export default function NotificationScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   backButton: {
-    padding: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginLeft: 12,
-    flex: 1,
+    fontWeight: '600',
+    color: '#262A27',
   },
   unreadBadgeHeader: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    backgroundColor: '#2F9A3C',
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   unreadBadgeHeaderText: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   actionBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#E3E7E3',
   },
   actionBtn: {
     flexDirection: 'row',
@@ -252,7 +248,6 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#43A047',
     marginLeft: 6,
   },
   listContainer: {
@@ -260,31 +255,38 @@ const styles = StyleSheet.create({
   },
   notifCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    borderLeftWidth: 3,
-    borderLeftColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  unreadCard: {
-    backgroundColor: '#F0FDF4',
-    borderLeftColor: '#43A047',
+  notifCardUnread: {
+    borderWidth: 1,
+    borderColor: '#2F9A3C',
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#E9ECE9',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  iconCircleActive: {
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
   },
   notifBody: {
     flex: 1,
@@ -293,50 +295,69 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   notifTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: '#262A27',
     flex: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
   unreadTitleText: {
-    fontWeight: '700',
-    color: '#111827',
+    color: '#2F9A3C',
+    fontWeight: '600',
   },
   timeText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: '#8A908B',
   },
   messageText: {
     fontSize: 13,
-    color: '#4B5563',
-    lineHeight: 18,
+    color: '#8A908B',
+    marginTop: 2,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#43A047',
+    backgroundColor: '#2F9A3C',
     marginLeft: 8,
-    marginTop: 6,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 56,
+  },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 12,
+    fontWeight: '600',
+    color: '#262A27',
+    marginTop: 8,
   },
   emptySubtitle: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#8A908B',
     marginTop: 4,
   },
 });

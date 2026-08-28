@@ -109,9 +109,12 @@ export interface UserProfile {
   phoneNumber: string;
   profilePicture: string; // URL, avatar name, or local asset path
   bloodGroup: string;
+  activeProfile?: 'passenger' | 'driver';
   emergencyContacts?: EmergencyContact[];
   isVerified?: boolean;
   verification?: VerificationDetails;
+  driverProfile?: DriverProfile;
+  vehicleDetails?: string;
 }
 
 export interface OfferRidePost {
@@ -126,6 +129,7 @@ export interface OfferRidePost {
   vehicleDetails: string;
   isAC: boolean;
   seatsAvailable: number;
+  travelDate?: string; // e.g., "Today", "Tomorrow", "2026-08-29"
   departureTime: string; // e.g., "14:00" or ISO timestamp
   departureTimestamp: number; // Unix millis for filtering & auto-deletion
   farePerSeat: number;
@@ -144,6 +148,7 @@ export interface BookRidePost {
   bagsCount: number;
   isAC: boolean;
   passengersCount: number;
+  travelDate?: string; // e.g., "Today", "Tomorrow", "2026-08-29"
   departureTime: string;
   departureTimestamp: number;
   createdAt: number;

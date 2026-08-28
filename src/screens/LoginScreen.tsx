@@ -14,17 +14,18 @@ import Icon from '../components/AppIcon';
 import { signInWithGoogle, mockSignIn, AuthSession } from '../services/authService';
 
 interface LoginScreenProps {
-  onLoginSuccess: (session: AuthSession) => void;
+  onLoginSuccess: (session: AuthSession, initialMode?: 'passenger' | 'driver') => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [initialMode, setInitialMode] = useState<'passenger' | 'driver'>('passenger');
 
   const handleGoogleSignIn = async () => {
     try {
       setIsLoggingIn(true);
       const session = await signInWithGoogle();
-      onLoginSuccess(session);
+      onLoginSuccess(session, initialMode);
     } catch (error: any) {
       Alert.alert('Sign-In Error', error.message || 'Google Sign-in failed.');
     } finally {
@@ -36,7 +37,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     try {
       setIsLoggingIn(true);
       const session = await mockSignIn('emulator.user@gmail.com');
-      onLoginSuccess(session);
+      onLoginSuccess(session, initialMode);
     } catch (error: any) {
       Alert.alert('Sign-In Error', 'Mock Sign-in failed.');
     } finally {
@@ -46,56 +47,105 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
       <View style={styles.container}>
-        {/* Hero Section */}
+        {/* Elevated Soft UI Hero Section */}
         <View style={styles.heroSection}>
-          <View style={styles.logoContainer}>
-            <Icon name="car-multiple" size={64} color="#43A047" />
+          <View style={styles.logoElevatedContainer}>
+            <Icon name="routes" size={32} color="#2F9A3C" />
           </View>
           <Text style={styles.appName}>Raahi</Text>
-          <Text style={styles.tagline}>Your Privacy-First Journey Partner</Text>
+          <Text style={styles.tagline}>Smart Intercity Carpooling & Ride Sharing</Text>
+          <View style={styles.taglinePill}>
+            <Text style={styles.urduTagline}>راہی — اپنا سفر، اپنا انتخاب</Text>
+          </View>
         </View>
 
-        {/* Info/Features Card */}
-        <View style={styles.featuresCard}>
-          <View style={styles.featureRow}>
-            <Icon name="shield-check-outline" size={24} color="#43A047" style={styles.featureIcon} />
-            <View style={styles.featureTextContainer}>
-              <Text style={styles.featureTitle}>Privacy-First Carpooling</Text>
-              <Text style={styles.featureDesc}>All trip communications and matching happen directly via WhatsApp links.</Text>
-            </View>
-          </View>
+        {/* Soft UI Persona Card with Segmented Selector */}
+        <View style={styles.roleCard}>
+          <Text style={styles.roleCardTitle}>Choose Your Persona</Text>
+          <View style={styles.segmentedContainer}>
+            <TouchableOpacity
+              style={[
+                styles.segmentOption,
+                initialMode === 'passenger' ? styles.segmentActive : styles.segmentInactive,
+              ]}
+              onPress={() => setInitialMode('passenger')}
+              activeOpacity={0.85}
+            >
+              <Icon
+                name="account"
+                size={18}
+                color={initialMode === 'passenger' ? '#FFFFFF' : '#262A27'}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.segmentText,
+                  initialMode === 'passenger' ? styles.segmentTextActive : styles.segmentTextInactive,
+                ]}
+              >
+                Passenger
+              </Text>
+            </TouchableOpacity>
 
-          <View style={styles.featureRow}>
-            <Icon name="database-off-outline" size={24} color="#E65100" style={styles.featureIcon} />
-            <View style={styles.featureTextContainer}>
-              <Text style={styles.featureTitle}>Zero Database Overhead</Text>
-              <Text style={styles.featureDesc}>No personal tracking database. Fares are calculated dynamically from secure sheets.</Text>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.segmentOption,
+                initialMode === 'driver' ? styles.segmentActive : styles.segmentInactive,
+              ]}
+              onPress={() => setInitialMode('driver')}
+              activeOpacity={0.85}
+            >
+              <Icon
+                name="steering"
+                size={18}
+                color={initialMode === 'driver' ? '#FFFFFF' : '#262A27'}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.segmentText,
+                  initialMode === 'driver' ? styles.segmentTextActive : styles.segmentTextInactive,
+                ]}
+              >
+                Driver
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         {/* Actions Section */}
         <View style={styles.actionContainer}>
           {isLoggingIn ? (
-            <ActivityIndicator size="large" color="#43A047" style={styles.loader} />
+            <ActivityIndicator size="small" color="#2F9A3C" style={styles.loader} />
           ) : (
             <>
-              <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn}>
-                <Icon name="google" size={24} color="#FFFFFF" style={styles.buttonIcon} />
-                <Text style={styles.googleButtonText}>Sign in with Gmail</Text>
+              {/* Primary Green Action Button */}
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleGoogleSignIn}
+                activeOpacity={0.85}
+              >
+                <Icon name="google" size={18} color="#FFFFFF" style={styles.buttonIcon} />
+                <Text style={styles.primaryButtonText}>Sign in with Google</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.mockButton} onPress={handleMockSignIn}>
-                <Icon name="flask-outline" size={20} color="#E65100" style={styles.buttonIcon} />
-                <Text style={styles.mockButtonText}>Direct Emulator Sign-In (Mock)</Text>
+              {/* Secondary White Soft Button */}
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={handleMockSignIn}
+                activeOpacity={0.85}
+              >
+                <Icon name="flask-outline" size={18} color="#262A27" style={styles.buttonIcon} />
+                <Text style={styles.secondaryButtonText}>Direct Emulator Sign-In</Text>
               </TouchableOpacity>
             </>
           )}
         </View>
 
         {/* Footer */}
-        <Text style={styles.footerText}>Developed by fyntech • Version 1.1.0</Text>
+        <Text style={styles.footerText}>Secure verified intercity transit • v2.0</Text>
       </View>
     </SafeAreaView>
   );
@@ -104,127 +154,199 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   container: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   heroSection: {
     alignItems: 'center',
-    marginTop: 60,
+    marginTop: 20,
   },
-  logoContainer: {
-    backgroundColor: '#E8F5E9',
-    padding: 16,
-    borderRadius: 24,
-    marginBottom: 14,
-    shadowColor: '#43A047',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+  logoElevatedContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   appName: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#111827',
-    letterSpacing: 0.5,
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#262A27',
+    letterSpacing: -0.2,
   },
   tagline: {
     fontSize: 13,
-    color: '#6B7280',
-    marginTop: 6,
+    color: '#8A908B',
+    marginTop: 4,
     textAlign: 'center',
   },
-  featuresCard: {
+  taglinePill: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+  },
+  urduTagline: {
+    fontSize: 12,
+    color: '#2F9A3C',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  roleCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
     width: '100%',
-    marginVertical: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    marginVertical: 12,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  featureIcon: {
-    marginTop: 2,
-    marginRight: 16,
-  },
-  featureTextContainer: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  featureDesc: {
+  roleCardTitle: {
     fontSize: 13,
-    color: '#6B7280',
-    marginTop: 4,
-    lineHeight: 18,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 12,
+  },
+  segmentedContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    backgroundColor: '#E9ECE9',
+    borderRadius: 9999,
+    padding: 4,
+  },
+  segmentOption: {
+    flex: 1,
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+  },
+  segmentActive: {
+    backgroundColor: '#2F9A3C',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  segmentInactive: {
+    backgroundColor: 'transparent',
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+  },
+  segmentTextInactive: {
+    color: '#262A27',
   },
   actionContainer: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   loader: {
     marginVertical: 20,
   },
-  googleButton: {
-    backgroundColor: '#43A047',
+  primaryButton: {
+    backgroundColor: '#2F9A3C',
     width: '100%',
-    borderRadius: 12,
-    paddingVertical: 12,
+    height: 52,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#43A047',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
     marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  googleButtonText: {
+  primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
   },
-  mockButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#E65100',
+  secondaryButton: {
+    backgroundColor: '#FFFFFF',
     width: '100%',
-    borderRadius: 12,
-    paddingVertical: 10,
+    height: 52,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  mockButtonText: {
-    color: '#E65100',
-    fontSize: 13,
-    fontWeight: '700',
+  secondaryButtonText: {
+    color: '#262A27',
+    fontSize: 15,
+    fontWeight: '600',
   },
   buttonIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   footerText: {
     fontSize: 12,
-    color: '#9CA3AF',
-    marginBottom: 10,
+    color: '#8A908B',
+    marginBottom: 4,
   },
 });

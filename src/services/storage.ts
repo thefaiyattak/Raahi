@@ -139,11 +139,27 @@ export const saveUserProfile = async (profile: UserProfile): Promise<void> => {
   }
 };
 
+export const saveActiveProfile = async (mode: 'passenger' | 'driver'): Promise<void> => {
+  try {
+    const current = await getUserProfile();
+    if (current) {
+      current.activeProfile = mode;
+      await saveUserProfile(current);
+    }
+  } catch (error: any) {
+    console.error(`[StorageService] Error saving active profile mode:`, error);
+  }
+};
+
 export const getUserProfile = async (): Promise<UserProfile | null> => {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY_USER);
     if (!raw) return null;
-    return JSON.parse(raw) as UserProfile;
+    const parsed = JSON.parse(raw) as UserProfile;
+    if (!parsed.activeProfile) {
+      parsed.activeProfile = 'passenger';
+    }
+    return parsed;
   } catch (error: any) {
     console.error(`[StorageService] Error getting user profile:`, error);
     throw new Error('Failed to retrieve user profile.');

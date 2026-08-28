@@ -87,7 +87,10 @@ interface AppIconProps {
 // Clean minimalist line-art vector icon mapping directly from Lucide SVG icons
 const OUTLINE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   'home': User,
-  'home-variant': User,
+  'home-variant': LayoutDashboard,
+  'language': Globe,
+  'translate': Globe,
+  'web': Globe,
   'briefcase': LayoutDashboard,
   'briefcase-outline': LayoutDashboard,
   'wallet-outline': Banknote,
@@ -122,6 +125,7 @@ const OUTLINE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   'alert-decagram': ShieldAlert,
   'account': User,
   'account-circle': User,
+  'account-circle-outline': User,
   'account-tie': UserCheck,
   'account-cowboy-hat': User,
   'account-detective': UserSearch,
@@ -157,6 +161,7 @@ const OUTLINE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   'fan': Fan,
   'message-text': MessageSquare,
   'comment-text-outline': MessageSquare,
+  'comment-text-multiple-outline': MessageSquare,
   'phone': Phone,
   'cellphone-check': Phone,
   'bell-outline': Bell,

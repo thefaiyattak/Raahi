@@ -88,10 +88,48 @@ export const markAllNotificationsAsReadLocal = async (): Promise<AppNotification
   }
 };
 
+export const checkAndNotifyMatchingPost = async (
+  newPost: {
+    fromCity: string;
+    toCity: string;
+    travelDate?: string;
+    departureTime: string;
+    postedByRole: 'passenger' | 'driver';
+    posterName: string;
+  },
+  currentActiveRole?: 'passenger' | 'driver'
+): Promise<void> => {
+  try {
+    // Only notify if target persona is the opposite role
+    const targetRole = newPost.postedByRole === 'passenger' ? 'driver' : 'passenger';
+    
+    // Add in-app notification
+    const isForDriver = targetRole === 'driver';
+    const title = isForDriver
+      ? `🚗 Matching Passenger Request: ${newPost.fromCity} ➔ ${newPost.toCity}`
+      : `🎟️ Matching Ride Offer: ${newPost.fromCity} ➔ ${newPost.toCity}`;
+
+    const dateStr = newPost.travelDate ? ` on ${newPost.travelDate}` : '';
+    const message = isForDriver
+      ? `${newPost.posterName} requested a seat from ${newPost.fromCity} to ${newPost.toCity}${dateStr} (${newPost.departureTime}). Tap to view and accept passenger.`
+      : `${newPost.posterName} offered a ride from ${newPost.fromCity} to ${newPost.toCity}${dateStr} (${newPost.departureTime}). Tap to view and book seats.`;
+
+    await addNotificationLocal({
+      title,
+      message,
+      type: isForDriver ? 'booking' : 'offer',
+    });
+  } catch (e) {
+    console.warn('[NotificationService] Error triggering matching notification', e);
+  }
+};
+
 export const clearAllNotificationsLocal = async (): Promise<void> => {
   try {
-    await AsyncStorage.removeItem(NOTIFICATIONS_KEY);
+    await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify([]));
   } catch (e) {
     console.error('[NotificationService] Error clearing notifications', e);
   }
 };
+
+

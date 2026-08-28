@@ -13,7 +13,6 @@ import {
   Platform,
   StatusBar,
   Image,
-  Modal,
 } from 'react-native';
 import Icon from '../components/AppIcon';
 import {
@@ -41,7 +40,6 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
   const [licenseNumber, setLicenseNumber] = useState('');
   const [drivingLicenseUri, setDrivingLicenseUri] = useState<string | null>(null);
   const [isLicenseVerified, setIsLicenseVerified] = useState(false);
-  const [showLicensePreviewModal, setShowLicensePreviewModal] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -124,7 +122,6 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
     const validation = validateProfile(profile);
     if (!validation.isValid) {
       setFieldErrors(validation.fieldErrors);
-      // Alert first error
       const firstError = Object.values(validation.fieldErrors)[0];
       Alert.alert('Validation Error', firstError);
       return;
@@ -178,7 +175,7 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#43A047" />
+        <ActivityIndicator size="large" color="#2F9A3C" />
         <Text style={styles.loadingText}>Loading Profile...</Text>
       </View>
     );
@@ -186,162 +183,163 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="arrow-left" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Vehicle Profile</Text>
-        </View>
+      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+      {/* Soft UI Elevated App Bar Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color="#262A27" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Vehicle Profile</Text>
+        <View style={{ width: 44 }} />
+      </View>
 
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {/* Top Hero Vehicle Card */}
-        <View style={[styles.card, { backgroundColor: '#FFFFFF', padding: 16, marginBottom: 16, alignItems: 'center' }]}>
+        <View style={styles.heroCard}>
           <Image
             source={{ uri: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600' }}
-            style={{ width: '100%', height: 120, resizeMode: 'contain', marginBottom: 10 }}
+            style={{ width: '100%', height: 110, resizeMode: 'contain', marginBottom: 12 }}
           />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             <View>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: '#262A27' }}>
                 {vehicleName && vehicleModel ? `${vehicleName} ${vehicleModel}` : 'Suzuki Alto'}
               </Text>
-              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>2021 • White</Text>
+              <Text style={{ fontSize: 13, color: '#8A908B', marginTop: 2 }}>2021 • White</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-              <Icon name="check" size={14} color="#2E7D32" style={{ marginRight: 4 }} />
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#2E7D32' }}>Verified</Text>
+            <View style={styles.verifiedPill}>
+              <Icon name="check" size={14} color="#2F9A3C" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#2F9A3C' }}>Verified</Text>
             </View>
           </View>
         </View>
 
+        {/* Driver Details Card */}
         <View style={styles.card}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <Text style={styles.cardTitle}>Driver Details</Text>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="pencil" size={14} color="#2E7D32" style={{ marginRight: 4 }} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#2E7D32' }}>Edit</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.cardTitle}>Driver & Vehicle Info</Text>
 
           {/* Driver Name */}
           <Text style={styles.label}>Driver Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Faisal Ahmed"
-            placeholderTextColor="#9CA3AF"
-            value={driverName}
-            onChangeText={setDriverName}
-          />
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Faisal Ahmed"
+              placeholderTextColor="#8A908B"
+              value={driverName}
+              onChangeText={setDriverName}
+            />
+          </View>
 
           {/* Vehicle Name */}
           <Text style={styles.label}>Vehicle Make/Name</Text>
-          <TextInput
-            style={[styles.input, fieldErrors.vehicleName ? styles.inputError : null]}
-            placeholder="e.g. Toyota"
-            placeholderTextColor="#9CA3AF"
-            value={vehicleName}
-            onChangeText={setVehicleName}
-          />
-          {fieldErrors.vehicleName && <Text style={styles.errorText}>{fieldErrors.vehicleName}</Text>}
+          <View style={[styles.inputContainer, fieldErrors.vehicleName ? styles.inputError : null]}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Toyota"
+              placeholderTextColor="#8A908B"
+              value={vehicleName}
+              onChangeText={setVehicleName}
+            />
+          </View>
 
           {/* Vehicle Model */}
           <Text style={styles.label}>Model/Year</Text>
-          <TextInput
-            style={[styles.input, fieldErrors.vehicleModel ? styles.inputError : null]}
-            placeholder="e.g. Camry 2023"
-            placeholderTextColor="#9CA3AF"
-            value={vehicleModel}
-            onChangeText={setVehicleModel}
-          />
-          {fieldErrors.vehicleModel && <Text style={styles.errorText}>{fieldErrors.vehicleModel}</Text>}
+          <View style={[styles.inputContainer, fieldErrors.vehicleModel ? styles.inputError : null]}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Camry 2023"
+              placeholderTextColor="#8A908B"
+              value={vehicleModel}
+              onChangeText={setVehicleModel}
+            />
+          </View>
 
           {/* WhatsApp Phone Number */}
           <Text style={styles.label}>WhatsApp Number</Text>
-          <TextInput
-            style={[styles.input, fieldErrors.phoneNumber ? styles.inputError : null]}
-            placeholder="e.g. +1234567890"
-            placeholderTextColor="#9CA3AF"
-            keyboardType="phone-pad"
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-          />
-          {fieldErrors.phoneNumber && <Text style={styles.errorText}>{fieldErrors.phoneNumber}</Text>}
+          <View style={[styles.inputContainer, fieldErrors.phoneNumber ? styles.inputError : null]}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. +923449793574"
+              placeholderTextColor="#8A908B"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+            />
+          </View>
 
-          {/* AC Default Tier */}
+          {/* AC Default Tier Toggle */}
           <View style={styles.switchContainer}>
-            <View>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.switchLabel}>Air Conditioning (AC) Default</Text>
               <Text style={styles.switchDesc}>Start new rides with AC fare tier selected</Text>
             </View>
             <Switch
               value={defaultACStatus}
               onValueChange={setDefaultACStatus}
-              trackColor={{ false: '#E5E7EB', true: '#A5D6A7' }}
-              thumbColor={defaultACStatus ? '#43A047' : '#F3F4F6'}
+              trackColor={{ false: '#E9ECE9', true: '#2F9A3C' }}
+              thumbColor="#FFFFFF"
             />
           </View>
 
           {/* AC Tier Badge */}
           <View style={styles.badgeContainer}>
-            <View style={[styles.badge, defaultACStatus ? styles.badgeAC : styles.badgeNonAC]}>
+            <View style={styles.tierPill}>
               <Icon
                 name={defaultACStatus ? 'snowflake' : 'fan'}
                 size={14}
-                color={defaultACStatus ? '#43A047' : '#E65100'}
+                color="#2F9A3C"
+                style={{ marginRight: 6 }}
               />
-              <Text style={[styles.badgeText, defaultACStatus ? styles.badgeTextAC : styles.badgeTextNonAC]}>
+              <Text style={styles.tierPillText}>
                 {defaultACStatus ? 'AC (Premium Tier)' : 'Non-AC (Standard Tier)'}
               </Text>
             </View>
           </View>
 
-          {/* DRIVING LICENSE VERIFICATION CARD */}
+          {/* Driving License Verification Section */}
           <View style={styles.licenseCardSection}>
             <View style={styles.licenseHeaderRow}>
-              <Icon name="card-account-details-outline" size={22} color="#43A047" style={{ marginRight: 8 }} />
+              <Icon name="card-account-details-outline" size={20} color="#2F9A3C" style={{ marginRight: 8 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.licenseTitleText}>Driving License Verification</Text>
                 <Text style={styles.licenseDescText}>Upload license photo to get Verified Driver badge 🛡️</Text>
               </View>
-              {isLicenseVerified && (
-                <View style={styles.verifiedBadgePill}>
-                  <Icon name="check-decagram" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.verifiedBadgePillText}>Verified</Text>
-                </View>
-              )}
             </View>
 
             {/* License Number Input */}
             <Text style={styles.label}>Driving License Number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. LHR-2022-881923"
-              placeholderTextColor="#9CA3AF"
-              value={licenseNumber}
-              onChangeText={setLicenseNumber}
-            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. LHR-2022-881923"
+                placeholderTextColor="#8A908B"
+                value={licenseNumber}
+                onChangeText={setLicenseNumber}
+              />
+            </View>
 
             {/* License Photo Box / Preview Card */}
             {drivingLicenseUri ? (
               <View style={styles.licensePhotoPreviewBox}>
                 <Image source={{ uri: drivingLicenseUri }} style={styles.licenseImageThumbnail} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>Driving License Card</Text>
-                  <Text style={{ fontSize: 11, color: '#43A047', fontWeight: '700', marginTop: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Driving License Card</Text>
+                  <Text style={{ fontSize: 12, color: '#2F9A3C', fontWeight: '600', marginTop: 2 }}>
                     Status: Valid & Verified ✅
                   </Text>
                   <TouchableOpacity
                     style={styles.changeLicensePhotoBtn}
                     onPress={handleUploadLicensePhoto}
+                    activeOpacity={0.8}
                   >
-                    <Icon name="camera-retake-outline" size={14} color="#43A047" style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 12, color: '#43A047', fontWeight: '700' }}>Change Photo</Text>
+                    <Icon name="camera-retake-outline" size={14} color="#2F9A3C" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 12, color: '#2F9A3C', fontWeight: '600' }}>Change Photo</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
-              <TouchableOpacity style={styles.uploadLicenseBox} onPress={handleUploadLicensePhoto}>
-                <Icon name="camera-plus-outline" size={32} color="#43A047" />
+              <TouchableOpacity style={styles.uploadLicenseBox} onPress={handleUploadLicensePhoto} activeOpacity={0.8}>
+                <Icon name="camera-plus-outline" size={28} color="#2F9A3C" />
                 <Text style={styles.uploadLicenseTitle}>Upload Driving License Photo</Text>
                 <Text style={styles.uploadLicenseSub}>Tap to capture or pick photo from gallery</Text>
               </TouchableOpacity>
@@ -349,25 +347,29 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
           </View>
         </View>
 
+        {/* Primary Save Button */}
         <TouchableOpacity
-          style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
+          style={styles.saveButton}
           onPress={handleSave}
           disabled={isSaving}
+          activeOpacity={0.85}
         >
           {isSaving ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={styles.saveButtonText}>Edit Vehicle</Text>
+            <Text style={styles.saveButtonText}>Save Vehicle Profile</Text>
           )}
         </TouchableOpacity>
 
+        {/* Secondary Delete Button */}
         {hasExistingProfile && (
           <TouchableOpacity
-            style={[styles.deleteButton, isSaving ? styles.buttonDisabled : null]}
+            style={styles.deleteButton}
             onPress={handleDelete}
             disabled={isSaving}
+            activeOpacity={0.85}
           >
-            <Icon name="trash-can-outline" size={20} color="#EF5350" />
+            <Icon name="trash-can-outline" size={18} color="#8A908B" style={{ marginRight: 6 }} />
             <Text style={styles.deleteButtonText}>Remove Vehicle</Text>
           </TouchableOpacity>
         )}
@@ -379,233 +381,203 @@ export default function VehicleConfigScreen({ onBack }: VehicleConfigScreenProps
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
-  },
-  container: {
-    padding: 20,
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F3F2',
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#6B7280',
+    marginTop: 12,
+    fontSize: 14,
+    color: '#8A908B',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  container: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 32,
+  },
+  heroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  verifiedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9999,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   cardTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    marginBottom: 16,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 8,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#374151',
-    marginBottom: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 6,
     marginTop: 10,
   },
-  input: {
-    backgroundColor: '#F8FAF8',
+  inputContainer: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: '#111827',
-    height: 42,
+    borderColor: '#E3E7E3',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 52,
+    justifyContent: 'center',
+  },
+  input: {
+    fontSize: 14,
+    color: '#262A27',
   },
   inputError: {
-    borderColor: '#EF4444',
-  },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
+    borderColor: '#262A27',
   },
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 20,
-    paddingTop: 16,
+    marginTop: 14,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E3E7E3',
   },
   switchLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#262A27',
   },
   switchDesc: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#8A908B',
     marginTop: 2,
   },
   badgeContainer: {
     alignItems: 'flex-start',
-    marginTop: 16,
+    marginTop: 10,
   },
-  badge: {
+  tierPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    borderRadius: 9999,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
-  badgeAC: {
-    backgroundColor: '#E8F5E9',
-  },
-  badgeNonAC: {
-    backgroundColor: '#FFF3E0',
-  },
-  badgeText: {
+  tierPillText: {
     fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
-  },
-  badgeTextAC: {
-    color: '#2E7D32',
-  },
-  badgeTextNonAC: {
-    color: '#E65100',
-  },
-  saveButton: {
-    backgroundColor: '#43A047',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 14,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 4, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#EF5350',
-    borderRadius: 16,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#EF5350',
-        shadowOffset: { width: 2, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 5,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  deleteButtonText: {
-    color: '#EF5350',
-    fontSize: 16,
-    fontWeight: '800',
-    marginLeft: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
+    color: '#2F9A3C',
   },
   licenseCardSection: {
-    marginTop: 20,
-    paddingTop: 16,
+    marginTop: 14,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: '#E3E7E3',
   },
   licenseHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   licenseTitleText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
   },
   licenseDescText: {
-    fontSize: 11,
-    color: '#6B7280',
+    fontSize: 12,
+    color: '#8A908B',
     marginTop: 2,
-  },
-  verifiedBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#43A047',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  verifiedBadgePillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
   },
   licensePhotoPreviewBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F3F2',
     padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginTop: 8,
+    borderRadius: 16,
+    marginTop: 10,
   },
   licenseImageThumbnail: {
-    width: 80,
-    height: 52,
-    borderRadius: 8,
-    backgroundColor: '#E5E7EB',
+    width: 68,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: '#E9ECE9',
   },
   changeLicensePhotoBtn: {
     flexDirection: 'row',
@@ -615,23 +587,74 @@ const styles = StyleSheet.create({
   uploadLicenseBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E8F5E9',
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#43A047',
-    borderRadius: 12,
-    padding: 20,
-    marginTop: 8,
+    backgroundColor: '#F2F3F2',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
   uploadLicenseTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2E7D32',
-    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+    marginTop: 6,
   },
   uploadLicenseSub: {
-    fontSize: 11,
-    color: '#6B7280',
+    fontSize: 12,
+    color: '#8A908B',
     marginTop: 2,
+  },
+  saveButton: {
+    backgroundColor: '#2F9A3C',
+    borderRadius: 20,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  deleteButtonText: {
+    color: '#262A27',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

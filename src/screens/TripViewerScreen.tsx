@@ -9,11 +9,11 @@ import {
   Linking,
   Platform,
   Alert,
+  StatusBar,
 } from 'react-native';
 import Icon from '../components/AppIcon';
 import { TripData } from '../types';
 import { openWhatsApp, shareTrip } from '../services/deepLinkService';
-import { formatFare } from '../services/fareEngine';
 
 interface TripViewerScreenProps {
   trip: TripData;
@@ -24,7 +24,6 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
   const formattedTime = new Date(trip.timestamp).toLocaleString();
 
   const handleOpenMaps = async (address: string) => {
-    // Generate map search query
     const scheme = Platform.select({
       ios: `maps:0,0?q=${encodeURIComponent(address)}`,
       android: `geo:0,0?q=${encodeURIComponent(address)}`,
@@ -64,30 +63,35 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+      {/* Soft UI Elevated App Bar */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color="#111827" />
+        <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color="#262A27" />
         </TouchableOpacity>
         <Text style={styles.title}>Trip Details</Text>
+        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Replaced Map with a Beautiful Journey Overview Hero Card */}
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Soft UI Elevated Journey Overview Card */}
         <View style={styles.journeyHeroCard}>
           <View style={styles.heroHeader}>
-            <Icon name="transit-connection-variant" size={24} color="#FFFFFF" />
+            <Icon name="routes" size={18} color="#2F9A3C" />
             <Text style={styles.heroHeaderText}>Active Carpool Route</Text>
           </View>
           <View style={styles.heroBody}>
             <Text style={styles.heroFromText}>{trip.originAddress.split(' (')[0]}</Text>
-            <Icon name="arrow-right-thick" size={24} color="#FFFFFF" style={styles.heroArrow} />
+            <View style={styles.arrowPill}>
+              <Icon name="arrow-right" size={16} color="#FFFFFF" />
+            </View>
             <Text style={styles.heroToText}>{trip.destinationAddress.split(' (')[0]}</Text>
           </View>
         </View>
 
         {/* Route Details Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Route stops & details</Text>
+          <Text style={styles.cardTitle}>Route Stops & Details</Text>
           
           <View style={styles.timelineContainer}>
             {/* Vertical Line Graphic */}
@@ -102,12 +106,13 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
               <TouchableOpacity
                 style={styles.stopClickable}
                 onPress={() => handleOpenMaps(trip.originAddress)}
+                activeOpacity={0.85}
               >
                 <View style={styles.stopTextWrapper}>
                   <Text style={styles.stopLabel}>Origin (Tap to open Map)</Text>
                   <Text style={styles.stopValue}>{trip.originAddress}</Text>
                 </View>
-                <Icon name="map-search-outline" size={20} color="#43A047" />
+                <Icon name="map-search-outline" size={18} color="#2F9A3C" />
               </TouchableOpacity>
 
               <View style={styles.stopGap} />
@@ -115,12 +120,13 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
               <TouchableOpacity
                 style={styles.stopClickable}
                 onPress={() => handleOpenMaps(trip.destinationAddress)}
+                activeOpacity={0.85}
               >
                 <View style={styles.stopTextWrapper}>
                   <Text style={styles.stopLabel}>Destination (Tap to open Map)</Text>
                   <Text style={styles.stopValue}>{trip.destinationAddress}</Text>
                 </View>
-                <Icon name="map-search-outline" size={20} color="#E65100" />
+                <Icon name="map-search-outline" size={18} color="#2F9A3C" />
               </TouchableOpacity>
             </View>
           </View>
@@ -131,9 +137,9 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
           <Text style={styles.cardTitle}>Fare Details</Text>
           <View style={styles.fareRow}>
             <Text style={styles.fareAmount}>Rs. {trip.fare.toFixed(2)}</Text>
-            <View style={[styles.tierBadge, trip.isAC ? styles.badgeAC : styles.badgeNonAC]}>
-              <Icon name={trip.isAC ? 'snowflake' : 'fan'} size={14} color={trip.isAC ? '#43A047' : '#E65100'} />
-              <Text style={[styles.tierBadgeText, trip.isAC ? styles.badgeTextAC : styles.badgeTextNonAC]}>
+            <View style={styles.tierBadge}>
+              <Icon name={trip.isAC ? 'snowflake' : 'fan'} size={14} color="#2F9A3C" />
+              <Text style={styles.tierBadgeText}>
                 {trip.isAC ? 'AC Premium' : 'Non-AC Standard'}
               </Text>
             </View>
@@ -148,7 +154,7 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
           <Text style={styles.cardTitle}>Driver & Vehicle Info</Text>
           <View style={styles.driverInfoRow}>
             <View style={styles.avatar}>
-              <Icon name="account" size={32} color="#43A047" />
+              <Icon name="account" size={22} color="#2F9A3C" />
             </View>
             <View style={styles.driverDetails}>
               <Text style={styles.driverVehicleName}>
@@ -158,19 +164,20 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
             </View>
           </View>
           <View style={styles.metadataContainer}>
-            <Icon name="clock-outline" size={14} color="#9CA3AF" />
+            <Icon name="clock-outline" size={13} color="#8A908B" />
             <Text style={styles.postedTime}>Posted: {formattedTime}</Text>
           </View>
         </View>
 
-        {/* Actions */}
-        <TouchableOpacity style={styles.contactButton} onPress={handleContactDriver}>
-          <Icon name="whatsapp" size={22} color="#FFFFFF" />
+        {/* Primary Action Button (Green tactile button) */}
+        <TouchableOpacity style={styles.contactButton} onPress={handleContactDriver} activeOpacity={0.85}>
+          <Icon name="whatsapp" size={18} color="#FFFFFF" />
           <Text style={styles.contactButtonText}>Contact Driver</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-          <Icon name="share-variant" size={20} color="#43A047" />
+        {/* Secondary Action Button (White soft button) */}
+        <TouchableOpacity style={styles.shareButton} onPress={handleShare} activeOpacity={0.85}>
+          <Icon name="share-variant" size={16} color="#262A27" />
           <Text style={styles.shareButtonText}>Share This Ride</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -181,138 +188,158 @@ export default function TripViewerScreen({ trip, onBack }: TripViewerScreenProps
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#F8F9FA',
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
   },
   container: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingVertical: 16,
+    paddingBottom: 32,
   },
   journeyHeroCard: {
-    backgroundColor: '#43A047',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 20,
+    padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   heroHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  heroHeaderIcon: {
-    marginRight: 8,
+    marginBottom: 10,
   },
   heroHeaderText: {
-    color: '#FFFFFF',
+    color: '#2F9A3C',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginLeft: 8,
+    letterSpacing: 0.5,
+    marginLeft: 6,
   },
   heroBody: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 16,
+    marginVertical: 4,
   },
   heroFromText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
+    color: '#262A27',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'right',
   },
-  heroArrow: {
-    marginHorizontal: 16,
+  arrowPill: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2F9A3C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 12,
   },
   heroToText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
+    color: '#262A27',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'left',
-  },
-  heroFooter: {
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  heroFooterText: {
-    color: '#E8F5E9',
-    fontSize: 14,
-    fontWeight: '600',
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 20,
+    padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    marginBottom: 16,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 12,
   },
   timelineContainer: {
     flexDirection: 'row',
   },
   timelineGraphic: {
-    width: 16,
+    width: 14,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   originCircle: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#43A047',
-    borderWidth: 2,
-    borderColor: '#A5D6A7',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2F9A3C',
   },
   timelineLine: {
     flex: 1,
     width: 2,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#E9ECE9',
     marginVertical: 4,
   },
   destCircle: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#E65100',
-    borderWidth: 2,
-    borderColor: '#FFCC80',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#262A27',
   },
   stopsContainer: {
     flex: 1,
@@ -321,28 +348,25 @@ const styles = StyleSheet.create({
   stopClickable: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: '#F2F3F2',
+    borderRadius: 14,
     padding: 12,
   },
   stopTextWrapper: {
     flex: 1,
   },
   stopLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#9CA3AF',
+    fontSize: 11,
+    color: '#8A908B',
   },
   stopValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#262A27',
     marginTop: 2,
   },
   stopGap: {
-    height: 24,
+    height: 10,
   },
   fareRow: {
     flexDirection: 'row',
@@ -350,108 +374,119 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   fareAmount: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#43A047',
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#2F9A3C',
   },
   tierBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20,
+    borderRadius: 9999,
     paddingVertical: 6,
     paddingHorizontal: 12,
-  },
-  badgeAC: {
-    backgroundColor: '#E8F5E9',
-  },
-  badgeNonAC: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
   },
   tierBadgeText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: '#2F9A3C',
     marginLeft: 6,
   },
-  badgeTextAC: {
-    color: '#2E7D32',
-  },
-  badgeTextNonAC: {
-    color: '#E65100',
-  },
   fareDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 12,
-    lineHeight: 18,
+    fontSize: 12,
+    color: '#8A908B',
+    marginTop: 8,
+    lineHeight: 16,
   },
   driverInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E8F5E9',
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   driverDetails: {
-    marginLeft: 16,
+    marginLeft: 12,
   },
   driverVehicleName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#262A27',
   },
   driverPhone: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 13,
+    color: '#8A908B',
     marginTop: 2,
   },
   metadataContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingTop: 12,
+    borderTopColor: '#E3E7E3',
+    paddingTop: 10,
   },
   postedTime: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#8A908B',
     marginLeft: 6,
   },
   contactButton: {
-    backgroundColor: '#43A047',
-    borderRadius: 14,
-    paddingVertical: 16,
+    backgroundColor: '#2F9A3C',
+    borderRadius: 20,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   contactButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     marginLeft: 8,
   },
   shareButton: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#43A047',
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 20,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   shareButtonText: {
-    color: '#43A047',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#262A27',
+    fontSize: 15,
+    fontWeight: '600',
     marginLeft: 8,
   },
 });

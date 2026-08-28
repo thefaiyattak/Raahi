@@ -18,7 +18,7 @@ import RatingsModal from '../components/RatingsModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { UserProfile, DriverProfile, EmergencyContact } from '../types';
-import { saveUserProfile, getDriverProfile, deleteDriverProfile } from '../services/storage';
+import { saveUserProfile, getDriverProfile } from '../services/storage';
 
 interface ProfileScreenProps {
   userProfile: UserProfile;
@@ -29,14 +29,6 @@ interface ProfileScreenProps {
 }
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-
-const AVATAR_PRESETS = [
-  'account-circle',
-  'account-tie',
-  'account-cowboy-hat',
-  'account-star',
-  'account-heart',
-];
 
 export default function ProfileScreen({
   userProfile,
@@ -90,7 +82,6 @@ export default function ProfileScreen({
         ];
 
   const [emergencyContactsList, setEmergencyContactsList] = useState<EmergencyContact[]>(initialContacts);
-
   const [isSaving, setIsSaving] = useState(false);
 
   const handleAddEmergencyContact = () => {
@@ -113,12 +104,6 @@ export default function ProfileScreen({
       return;
     }
     setEmergencyContactsList(emergencyContactsList.filter((c) => c.id !== id));
-  };
-
-  const handleUpdateContactField = (id: string, field: keyof EmergencyContact, val: string) => {
-    setEmergencyContactsList(
-      emergencyContactsList.map((c) => (c.id === id ? { ...c, [field]: val } : c))
-    );
   };
 
   const handlePickProfilePhoto = () => {
@@ -157,10 +142,8 @@ export default function ProfileScreen({
   const [isPhoneVerified, setIsPhoneVerified] = useState<boolean>(existingVerif.phoneVerified !== false);
   const [licenseNumber, setLicenseNumber] = useState(existingVerif.drivingLicenseNumber || 'LHR-2021-998812');
   const [licenseFrontUri, setLicenseFrontUri] = useState<string | null>(existingVerif.drivingLicenseFrontUri || 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=500');
-  const [licenseBackUri, setLicenseBackUri] = useState<string | null>(existingVerif.drivingLicenseBackUri || null);
   const [vehicleRegNumber, setVehicleRegNumber] = useState(existingVerif.vehicleRegistrationNumber || 'LHR-8822');
   const [vehicleRegUri, setVehicleRegUri] = useState<string | null>(existingVerif.vehicleRegistrationUri || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=500');
-  const [isVerified, setIsVerified] = useState<boolean>(userProfile.isVerified !== false);
 
   const handleUploadDocument = (docName: string, setter: (uri: string) => void) => {
     Alert.alert(
@@ -181,23 +164,6 @@ export default function ProfileScreen({
             const demoUri = 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600';
             setter(demoUri);
             Alert.alert('Document Selected', `${docName} image selected successfully! ✅`);
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
-
-  const handleVerifyPhone = () => {
-    Alert.alert(
-      'Active Phone Verification',
-      `An OTP authentication SMS has been dispatched to ${phoneNumber || '+923449793574'}.\n\nDemo Verification Code: 5892`,
-      [
-        {
-          text: 'Confirm & Verify Phone Number',
-          onPress: () => {
-            setIsPhoneVerified(true);
-            Alert.alert('Phone Verified! ✅', 'Your phone number has been authenticated.');
           },
         },
         { text: 'Cancel', style: 'cancel' },
@@ -233,7 +199,6 @@ export default function ProfileScreen({
           phoneVerified: isPhoneVerified,
           drivingLicenseNumber: licenseNumber,
           drivingLicenseFrontUri: licenseFrontUri || undefined,
-          drivingLicenseBackUri: licenseBackUri || undefined,
           isLicenseVerified: !!licenseFrontUri,
           vehicleRegistrationNumber: vehicleRegNumber,
           vehicleRegistrationUri: vehicleRegUri || undefined,
@@ -246,7 +211,7 @@ export default function ProfileScreen({
 
       await saveUserProfile(updated);
       onProfileUpdated(updated);
-      Alert.alert('Verification Saved! ✅', 'Your identity documents and verification details have been saved in the database.');
+      Alert.alert('Profile Saved! ✅', 'Your identity documents and verification details have been saved successfully.');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to update profile.');
     } finally {
@@ -254,351 +219,230 @@ export default function ProfileScreen({
     }
   };
 
+  const isDriver = (userProfile.activeProfile || 'passenger') === 'driver';
+
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       {/* Top Header */}
-      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+      <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Icon name="arrow-left" size={24} color={theme.primary} />
+          <Icon name="arrow-left" size={22} color="#262A27" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('profile')}</Text>
-        <TouchableOpacity style={{ padding: 4 }} onPress={onNavigateToSettings}>
-          <Icon name="cog-outline" size={24} color={theme.primary} />
+        <Text style={[styles.headerTitle, getTextStyle()]}>{t('profile')}</Text>
+        <TouchableOpacity style={styles.gearButton} onPress={onNavigateToSettings}>
+          <Icon name="cog-outline" size={22} color="#262A27" />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* REGISTER / MODIFY / DELETE DRIVER PROFILE CARD */}
-        <View style={[styles.card, { backgroundColor: hasVehicleProfile ? '#F0FDF4' : '#FFFBEB', borderColor: hasVehicleProfile ? '#86EFAC' : '#FCD34D', padding: 14 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: hasVehicleProfile ? '#DCFCE7' : '#FEF3C7', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-              <Icon name={hasVehicleProfile ? "car-side" : "car-cog"} size={20} color={hasVehicleProfile ? '#16A34A' : '#D97706'} />
-            </View>
-
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
-                  {hasVehicleProfile ? 'Driver Profile Active' : 'Register as a Driver'}
-                </Text>
-                <View style={{ backgroundColor: hasVehicleProfile ? '#DCFCE7' : '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: hasVehicleProfile ? '#15803D' : '#B45309' }}>
-                    {hasVehicleProfile ? 'ACTIVE' : 'SETUP REQUIRED'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>
-                {hasVehicleProfile
-                  ? 'Your driver license & vehicle profile are active.'
-                  : 'Complete CNIC, Phone, License & Vehicle registration to offer rides.'}
+        {/* Active Persona Header Card */}
+        <View style={styles.personaCard}>
+          <View style={styles.personaIconContainer}>
+            <Icon name={isDriver ? 'steering' : 'account'} size={22} color="#2F9A3C" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.personaTitle, getTextStyle()]}>
+                {isDriver ? 'Driver Profile' : 'Passenger Profile'}
               </Text>
-            </View>
-
-            {hasVehicleProfile ? (
-              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                <TouchableOpacity
-                  style={{ backgroundColor: '#2E7D32', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 }}
-                  onPress={onNavigateToVehicleConfig}
-                >
-                  <Icon name="pencil" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Modify</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{ backgroundColor: '#DC2626', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 }}
-                  onPress={() => {
-                    Alert.alert(
-                      'Delete Driver Profile 🗑️',
-                      'Are you sure you want to delete your Driver Profile? This will remove your vehicle profile, license documents, and revert your account to Passenger mode only.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete Profile',
-                          style: 'destructive',
-                          onPress: async () => {
-                            try {
-                              await deleteDriverProfile();
-                              setHasVehicleProfile(false);
-                              Alert.alert('Driver Profile Deleted', 'Your Driver Profile has been removed successfully. You are now in Passenger mode.');
-                            } catch (err: any) {
-                              Alert.alert('Error', err.message || 'Failed to delete driver profile.');
-                            }
-                          },
-                        },
-                      ]
-                    );
-                  }}
-                >
-                  <Icon name="trash-can-outline" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Delete</Text>
-                </TouchableOpacity>
+              <View style={styles.activePill}>
+                <Text style={styles.activePillText}>ACTIVE</Text>
               </View>
-            ) : (
-              <TouchableOpacity
-                style={{ backgroundColor: '#D97706', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}
-                onPress={() => {
-                  if (!(cnicFrontUri && cnicBackUri && isPhoneVerified)) {
-                    Alert.alert(
-                      'Verification Required 🛡️',
-                      'First, you must verify your account (CNIC & Phone) to be eligible to register as a Driver.'
-                    );
-                    return;
-                  }
-                  onNavigateToVehicleConfig();
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
-                  Register Now ➔
-                </Text>
-              </TouchableOpacity>
-            )}
+            </View>
+            <Text style={styles.personaSubText}>
+              {isDriver ? 'Active persona: Offering rides & vehicle management' : 'Active persona: Searching rides & seat bookings'}
+            </Text>
           </View>
         </View>
-        {/* PUBLIC RATINGS & REVIEWS CARD */}
+
+        {/* Public Reviews Card */}
         <TouchableOpacity
-          style={[styles.publicRatingCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+          style={styles.ratingCard}
           onPress={() => setShowRatingsModal(true)}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="star" size={20} color="#FFD700" style={{ marginRight: 6 }} />
-              <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.textPrimary }]}>4.9 / 5.0</Text>
-              <View style={[styles.verifiedPill, { backgroundColor: '#E8F5E9', marginLeft: 8 }]}>
-                <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Public Rating</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="star" size={18} color="#2F9A3C" />
+              <Text style={styles.ratingValue}>4.9 / 5.0</Text>
+              <View style={styles.verifiedScoreBadge}>
+                <Text style={styles.verifiedScoreText}>Verified Traveler</Text>
               </View>
             </View>
-            <Text style={[{ fontSize: 12, color: theme.textSecondary, marginTop: 4 }, getTextStyle()]}>
-              32 Ratings & 8 Comments • Tap to open
+            <Text style={[styles.ratingSubText, getTextStyle()]}>
+              32 Ratings & 8 Comments • Tap for details
             </Text>
           </View>
-
-          <View style={[styles.openReviewsBtn, { backgroundColor: theme.primary }]}>
-            <Text style={[styles.openReviewsBtnText, { color: theme.white }, getTextStyle()]}>
-              View Reviews
-            </Text>
-            <Icon name="chevron-right" size={16} color={theme.white} />
+          <View style={styles.viewReviewsBtn}>
+            <Text style={styles.viewReviewsBtnText}>Reviews</Text>
+            <Icon name="chevron-right" size={16} color="#2F9A3C" />
           </View>
         </TouchableOpacity>
 
-        {/* Real Profile Picture Upload Card */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-          <Text style={[styles.cardTitle, { color: theme.primary }, getTextStyle()]}>
-            Profile Picture
+        {/* DRIVER SPECIFIC: Vehicle Setup Status */}
+        {isDriver && (
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={styles.vehicleIconBadge}>
+                <Icon name={hasVehicleProfile ? 'car-side' : 'car-cog'} size={20} color="#2F9A3C" />
+              </View>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.sectionTitle, getTextStyle()]}>
+                    {hasVehicleProfile ? 'Vehicle & Driver Setup' : 'Configure Driver Vehicle'}
+                  </Text>
+                  <View style={styles.readyBadge}>
+                    <Text style={styles.readyBadgeText}>
+                      {hasVehicleProfile ? 'READY' : 'REQUIRED'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.cardSubtitle, getTextStyle()]}>
+                  {hasVehicleProfile
+                    ? `${driverProfile?.vehicleName || 'Toyota'} ${driverProfile?.vehicleModel || 'Corolla'} • ${driverProfile?.defaultACStatus ? 'AC Enabled' : 'Non-AC'}`
+                    : 'Set up car details, AC pricing rates, and driver documents.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.actionBtnSmall}
+                onPress={onNavigateToVehicleConfig}
+                activeOpacity={0.85}
+              >
+                <Icon name="pencil" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.actionBtnSmallText}>
+                  {hasVehicleProfile ? 'Manage' : 'Setup'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Identity & Photo Card */}
+        <View style={styles.card}>
+          <Text style={[styles.cardHeading, getTextStyle()]}>
+            {isDriver ? 'Driver Photo & Identity' : 'Passenger Photo & Identity'}
           </Text>
-
-          {/* Profile Photo Display Frame */}
           <View style={styles.photoContainer}>
-            <View style={[styles.photoCircleFrame, { borderColor: '#2E7D32', backgroundColor: theme.inputBackground }]}>
+            <View style={styles.photoFrame}>
               {customPhotoUri ? (
-                <Image source={{ uri: customPhotoUri }} style={styles.photoImageCircle} />
+                <Image source={{ uri: customPhotoUri }} style={styles.photoImage} />
               ) : (
-                <Image source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500' }} style={styles.photoImageCircle} />
+                <Image source={{ uri: isDriver ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500' : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500' }} style={styles.photoImage} />
               )}
-
-              {/* Camera Badge Edit Icon */}
-              <TouchableOpacity style={[styles.cameraBadgeBtn, { backgroundColor: '#2E7D32' }]} onPress={handlePickProfilePhoto}>
+              <TouchableOpacity style={styles.cameraBadge} onPress={handlePickProfilePhoto} activeOpacity={0.85}>
                 <Icon name="camera" size={14} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
-            <Text style={[{ fontSize: 20, fontWeight: '800', color: theme.textPrimary, marginTop: 8 }, getTextStyle()]}>
-              {fullName || 'Faisal Hayat'}
+            <Text style={[styles.userNameText, getTextStyle()]}>
+              {fullName || (isDriver ? 'Driver Name' : 'Passenger Name')}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: theme.textSecondary, marginRight: 6 }}>{phoneNumber || '+923449793574'}</Text>
-              <Icon name="whatsapp" size={16} color="#25D366" />
+            <View style={styles.phoneTagRow}>
+              <Text style={styles.phoneTagText}>{phoneNumber || '+923449793574'}</Text>
+              <Icon name="check-decagram" size={16} color="#2F9A3C" />
             </View>
 
-            {/* Dynamic Security Verification Status Badges (Passenger, and optional Driver/Vehicle if setup) */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 12 }}>
-              <View style={{ flex: 1, backgroundColor: (cnicFrontUri && cnicBackUri && isPhoneVerified) ? '#F0FDF4' : '#FEF3C7', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', marginHorizontal: 2, borderWidth: 1, borderColor: (cnicFrontUri && cnicBackUri && isPhoneVerified) ? '#DCFCE7' : '#FDE047' }}>
-                <Icon name={(cnicFrontUri && cnicBackUri && isPhoneVerified) ? 'account-check' : 'account-alert'} size={18} color={(cnicFrontUri && cnicBackUri && isPhoneVerified) ? '#16A34A' : '#D97706'} />
-                <Text style={{ fontSize: 10, fontWeight: '800', color: (cnicFrontUri && cnicBackUri && isPhoneVerified) ? '#15803D' : '#B45309', marginTop: 3, textAlign: 'center' }}>
-                  {(cnicFrontUri && cnicBackUri && isPhoneVerified) ? 'Verified Passenger' : 'Unverified Passenger'}
-                </Text>
-              </View>
-
-              {hasVehicleProfile && (
-                <>
-                  <View style={{ flex: 1, backgroundColor: licenseFrontUri ? '#F0FDF4' : '#FEF3C7', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', marginHorizontal: 2, borderWidth: 1, borderColor: licenseFrontUri ? '#DCFCE7' : '#FDE047' }}>
-                    <Icon name={licenseFrontUri ? 'card-account-details-outline' : 'card-account-details-star-outline'} size={18} color={licenseFrontUri ? '#16A34A' : '#D97706'} />
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: licenseFrontUri ? '#15803D' : '#B45309', marginTop: 3, textAlign: 'center' }}>
-                      {licenseFrontUri ? 'Verified Driver' : 'Unverified Driver'}
-                    </Text>
-                  </View>
-
-                  <View style={{ flex: 1, backgroundColor: vehicleRegUri ? '#F0FDF4' : '#FFF7ED', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', marginHorizontal: 2, borderWidth: 1, borderColor: vehicleRegUri ? '#DCFCE7' : '#FFEDD5' }}>
-                    <Icon name={vehicleRegUri ? 'car-check' : 'car-off-outline'} size={18} color={vehicleRegUri ? '#16A34A' : '#C2410C'} />
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: vehicleRegUri ? '#15803D' : '#C2410C', marginTop: 3, textAlign: 'center' }}>
-                      {vehicleRegUri ? 'Verified Vehicle' : 'Unverified Vehicle'}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </View>
-
-            <TouchableOpacity style={[styles.uploadPhotoBtn, { backgroundColor: '#E8F5E9' }]} onPress={handlePickProfilePhoto}>
-              <Icon name="upload" size={14} color="#2E7D32" style={{ marginRight: 6 }} />
-              <Text style={[{ fontSize: 12, fontWeight: '800', color: '#2E7D32' }, getTextStyle()]}>
-                Upload New Photo
+            <TouchableOpacity style={styles.updatePhotoBtn} onPress={handlePickProfilePhoto} activeOpacity={0.85}>
+              <Icon name="upload" size={14} color="#2F9A3C" style={{ marginRight: 6 }} />
+              <Text style={[styles.updatePhotoBtnText, getTextStyle()]}>
+                Update Profile Photo
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Personal Details Card */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <Text style={[styles.cardTitle, { color: theme.primary, marginBottom: 0 }, getTextStyle()]}>Personal Information</Text>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="pencil" size={14} color="#2E7D32" style={{ marginRight: 4 }} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#2E7D32' }}>Edit</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.card}>
+          <Text style={[styles.cardHeading, getTextStyle()]}>Personal Details</Text>
 
-          <Text style={[styles.label, { color: theme.textPrimary }, getTextStyle()]}>Full Name</Text>
+          <Text style={[styles.inputLabel, getTextStyle()]}>Full Legal Name *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
+            style={[styles.inputField, getTextStyle()]}
             value={fullName}
             onChangeText={setFullName}
-            placeholder="e.g. Faisal Ahmed"
-            placeholderTextColor={theme.textMuted}
+            placeholder="e.g. Faisal Hayat"
+            placeholderTextColor="#8A908B"
           />
 
-          <Text style={[styles.label, { color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'ای میل ایڈریس' : 'Email Address (Read-only)'}</Text>
+          <Text style={[styles.inputLabel, getTextStyle()]}>Contact Phone Number *</Text>
           <TextInput
-            style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textMuted }]}
-            value={userProfile.email}
-            editable={false}
-          />
-
-          <Text style={[styles.label, { color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'واٹس ایپ فون نمبر *' : 'WhatsApp Phone Number *'}</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
+            style={[styles.inputField, getTextStyle()]}
             value={phoneNumber}
             onChangeText={setPhoneNumber}
             placeholder="e.g. +923449793574"
-            placeholderTextColor={theme.textMuted}
+            placeholderTextColor="#8A908B"
             keyboardType="phone-pad"
           />
-          <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }, getTextStyle()]}>Include country code (+92 for PK)</Text>
         </View>
 
-        {/* PASSENGER & DRIVER SECURITY VERIFICATION CARD */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+        {/* CNIC / License Document Verification Card */}
+        <View style={styles.card}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="shield-check" size={22} color="#16A34A" style={{ marginRight: 6 }} />
-              <Text style={[styles.cardTitle, { color: theme.primary, marginBottom: 0 }, getTextStyle()]}>
-                {isUrdu ? 'پاسنجر اور ڈرائیور تصدیق' : 'Security & Identity Verification'}
-              </Text>
-            </View>
-            <View style={{ backgroundColor: isVerified ? '#DCFCE7' : '#FEF3C7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: isVerified ? '#86EFAC' : '#FDE047' }}>
-              <Text style={{ color: isVerified ? '#15803D' : '#B45309', fontSize: 11, fontWeight: '800' }}>
-                {isVerified ? '✓ VERIFIED USER' : 'Pending Verification'}
+            <Text style={[styles.cardHeading, { marginBottom: 0 }, getTextStyle()]}>
+              {isDriver ? 'Driver License & CNIC' : 'CNIC Identity Verification'}
+            </Text>
+            <View style={styles.verifiedStatusBadge}>
+              <Text style={styles.verifiedStatusText}>
+                {isDriver ? (licenseFrontUri ? '✓ Verified' : 'Action Required') : ((cnicFrontUri && cnicBackUri) ? '✓ CNIC Verified' : 'Pending Upload')}
               </Text>
             </View>
           </View>
 
-          <Text style={[{ fontSize: 12, color: theme.textSecondary, marginBottom: 14 }, getTextStyle()]}>
-            {isUrdu
-              ? 'سیکیورٹی مقاصد کے لیے سی این آئی سی کی تصاویر اور ڈرائیونگ لائسنس اپ لوڈ کریں تاکہ تصدیق شدہ بیج حاصل کریں۔'
-              : 'Upload CNIC, Active Phone, and Driving License/Vehicle Registration to obtain a Verified Security Badge saved securely in database.'}
-          </Text>
-
-          {/* 1. Phone Verification Status */}
-          <View style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                <Icon name="cellphone-check" size={20} color={isPhoneVerified ? '#16A34A' : '#D97706'} style={{ marginRight: 8 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>
-                    Active Phone Number
-                  </Text>
-                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 1 }, getTextStyle()]}>
-                    {phoneNumber || '+923449793574'}
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={{ backgroundColor: isPhoneVerified ? '#E8F5E9' : theme.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}
-                onPress={handleVerifyPhone}
-              >
-                <Text style={{ color: isPhoneVerified ? '#2E7D32' : '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
-                  {isPhoneVerified ? '✓ Phone Verified' : 'Verify via OTP'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* 2. CNIC Front & Back Images */}
-          <Text style={[styles.label, { color: theme.textPrimary, marginTop: 4 }, getTextStyle()]}>
-            CNIC / National Identity Card *
+          <Text style={[styles.inputLabel, getTextStyle()]}>
+            {isDriver ? 'Driving License Number *' : 'CNIC Number *'}
           </Text>
           <TextInput
-            style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary, marginBottom: 10 }, getTextStyle()]}
-            value={cnicNumber}
-            onChangeText={setCnicNumber}
-            placeholder="CNIC No. e.g. 35202-1234567-1"
-            placeholderTextColor={theme.textMuted}
-            keyboardType="numeric"
+            style={[styles.inputField, { marginBottom: 12 }, getTextStyle()]}
+            value={isDriver ? licenseNumber : cnicNumber}
+            onChangeText={isDriver ? setLicenseNumber : setCnicNumber}
+            placeholder={isDriver ? 'e.g. LHR-2021-998812' : '35202-1234567-1'}
+            placeholderTextColor="#8A908B"
           />
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
-            {/* CNIC Front */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, marginRight: 6 }}>
-              <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: '600', marginBottom: 4 }}>CNIC Front Image</Text>
+              <Text style={styles.docSubLabel}>{isDriver ? 'License Front' : 'CNIC Front'}</Text>
               <TouchableOpacity
-                style={{ height: 90, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: cnicFrontUri ? '#16A34A' : '#D1D5DB', borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}
-                onPress={() => handleUploadDocument('CNIC Front', setCnicFrontUri)}
+                style={styles.docUploadBox}
+                onPress={() => handleUploadDocument(isDriver ? 'License Front' : 'CNIC Front', isDriver ? setLicenseFrontUri : setCnicFrontUri)}
+                activeOpacity={0.85}
               >
-                {cnicFrontUri ? (
-                  <Image source={{ uri: cnicFrontUri }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                {(isDriver ? licenseFrontUri : cnicFrontUri) ? (
+                  <Image source={{ uri: (isDriver ? licenseFrontUri : cnicFrontUri)! }} style={styles.docImage} />
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <Icon name="card-account-details-outline" size={24} color="#6B7280" />
-                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '700', marginTop: 4 }}>+ Upload Front</Text>
+                    <Icon name="card-account-details-outline" size={24} color="#8A908B" />
+                    <Text style={styles.docUploadText}>+ Upload Front</Text>
                   </View>
                 )}
               </TouchableOpacity>
             </View>
 
-            {/* CNIC Back */}
             <View style={{ flex: 1, marginLeft: 6 }}>
-              <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: '600', marginBottom: 4 }}>CNIC Back Image</Text>
+              <Text style={styles.docSubLabel}>{isDriver ? 'Vehicle Registration' : 'CNIC Back'}</Text>
               <TouchableOpacity
-                style={{ height: 90, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: cnicBackUri ? '#16A34A' : '#D1D5DB', borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}
-                onPress={() => handleUploadDocument('CNIC Back', setCnicBackUri)}
+                style={styles.docUploadBox}
+                onPress={() => handleUploadDocument(isDriver ? 'Vehicle Registration' : 'CNIC Back', isDriver ? setVehicleRegUri : setCnicBackUri)}
+                activeOpacity={0.85}
               >
-                {cnicBackUri ? (
-                  <Image source={{ uri: cnicBackUri }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                {(isDriver ? vehicleRegUri : cnicBackUri) ? (
+                  <Image source={{ uri: (isDriver ? vehicleRegUri : cnicBackUri)! }} style={styles.docImage} />
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <Icon name="card-account-details" size={24} color="#6B7280" />
-                    <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '700', marginTop: 4 }}>+ Upload Back</Text>
+                    <Icon name={isDriver ? 'car-check' : 'card-account-details'} size={24} color="#8A908B" />
+                    <Text style={styles.docUploadText}>{isDriver ? '+ Upload Doc' : '+ Upload Back'}</Text>
                   </View>
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-
-
-
-          {/* Official Document Privacy Guarantee Banner */}
-          <View style={{ backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD', borderRadius: 10, padding: 10, marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
-            <Icon name="lock" size={16} color="#0284C7" style={{ marginRight: 8 }} />
-            <Text style={{ fontSize: 10, color: '#0369A1', flex: 1, fontWeight: '600' }}>
-              🔒 Document Privacy Note: CNIC, Driver License, & Vehicle Documents are 100% PRIVATE. They are strictly collected for verification by Raahi Administration and are NEVER shared with other users.
-            </Text>
           </View>
         </View>
 
-        {/* Medical & Safety Card */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-          <Text style={[styles.cardTitle, { color: theme.primary }, getTextStyle()]}>{isUrdu ? 'میڈیکل اور بلڈ گروپ' : 'Medical & Blood Group'}</Text>
-          <Text style={[styles.label, { color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'بلڈ گروپ منتخب کریں' : 'Select Blood Group'}</Text>
+        {/* Medical & Blood Group Card */}
+        <View style={styles.card}>
+          <Text style={[styles.cardHeading, getTextStyle()]}>Medical & Blood Group</Text>
+          <Text style={[styles.inputLabel, getTextStyle()]}>Select Blood Group</Text>
           <View style={styles.bloodGroupRow}>
             {BLOOD_GROUPS.map((bg) => {
               const isSelected = bloodGroup === bg;
@@ -606,15 +450,16 @@ export default function ProfileScreen({
                 <TouchableOpacity
                   key={bg}
                   style={[
-                    styles.bloodBadge,
-                    isSelected ? { backgroundColor: theme.primary, borderColor: theme.primary } : { backgroundColor: theme.inputBackground, borderColor: theme.border },
+                    styles.bloodGroupChip,
+                    isSelected ? styles.bloodGroupChipSelected : null,
                   ]}
                   onPress={() => setBloodGroup(bg)}
+                  activeOpacity={0.85}
                 >
                   <Text
                     style={[
-                      styles.bloodBadgeText,
-                      isSelected ? { color: theme.white, fontWeight: '800' } : { color: theme.textPrimary },
+                      styles.bloodGroupChipText,
+                      isSelected ? styles.bloodGroupChipTextSelected : null,
                     ]}
                   >
                     {bg}
@@ -624,52 +469,55 @@ export default function ProfileScreen({
             })}
           </View>
 
-          {/* Emergency Contacts List (Up to 3 Contacts) */}
+          {/* Emergency SOS Contacts */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8 }}>
-            <Text style={[styles.cardTitleSub, { color: theme.primary, marginTop: 0 }, getTextStyle()]}>
-              {isUrdu ? 'شخصی ہنگامی رابطے (زیادہ سے زیادہ 3)' : 'Emergency Contacts'}
+            <Text style={[styles.sectionTitle, getTextStyle()]}>
+              Emergency Contacts (Max 3)
             </Text>
             {emergencyContactsList.length < 3 && (
               <TouchableOpacity
-                style={[styles.addContactBadge, { backgroundColor: theme.primaryBackground }]}
+                style={styles.addContactBtn}
                 onPress={handleAddEmergencyContact}
+                activeOpacity={0.85}
               >
-                <Icon name="plus" size={14} color={theme.primary} style={{ marginRight: 2 }} />
-                <Text style={[{ fontSize: 11, color: theme.primary, fontWeight: '800' }, getTextStyle()]}>Add New</Text>
+                <Icon name="plus" size={14} color="#2F9A3C" style={{ marginRight: 2 }} />
+                <Text style={[styles.addContactBtnText, getTextStyle()]}>Add New</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {emergencyContactsList.map((contact, index) => (
-            <View key={contact.id} style={[styles.contactCardBox, { backgroundColor: theme.inputBackground, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 10, marginBottom: 8 }]}>
+            <View key={contact.id} style={styles.contactRowBox}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Icon name="shield-alert-outline" size={16} color={theme.primary} style={{ marginRight: 8 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
+                  <Icon name="shield-alert-outline" size={16} color="#2F9A3C" style={{ marginRight: 8 }} />
+                  <Text style={[styles.contactNameText, getTextStyle()]}>
                     {contact.name || `Contact #${index + 1}`} {contact.relation ? `(${contact.relation})` : ''}
                   </Text>
                 </View>
-                <Text style={[{ fontSize: 12, color: theme.primary, fontWeight: '700', marginTop: 2, marginLeft: 24 }]}>
+                <Text style={styles.contactPhoneText}>
                   {contact.phone || 'No phone set'}
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
-                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFEBEE', justifyContent: 'center', alignItems: 'center' }}
+                  style={styles.contactActionCircle}
                   onPress={() => Linking.openURL(`sms:${contact.phone}?body=${encodeURIComponent('Raahi Emergency: I need urgent help!')}`)}
+                  activeOpacity={0.85}
                 >
-                  <Icon name="message-text" size={15} color="#D32F2F" />
+                  <Icon name="message-text" size={14} color="#262A27" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center' }}
+                  style={styles.contactActionCircle}
                   onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+                  activeOpacity={0.85}
                 >
-                  <Icon name="phone" size={15} color="#2E7D32" />
+                  <Icon name="phone" size={14} color="#2F9A3C" />
                 </TouchableOpacity>
                 {emergencyContactsList.length > 1 && (
-                  <TouchableOpacity onPress={() => handleRemoveEmergencyContact(contact.id)} style={{ padding: 4, marginLeft: 4 }}>
-                    <Icon name="trash-can-outline" size={16} color="#EF5350" />
+                  <TouchableOpacity onPress={() => handleRemoveEmergencyContact(contact.id)} style={{ padding: 4 }}>
+                    <Icon name="trash-can-outline" size={16} color="#8A908B" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -677,12 +525,17 @@ export default function ProfileScreen({
           ))}
         </View>
 
-
-
-        {/* Save Button */}
-        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: theme.primary }]} onPress={handleSave} disabled={isSaving}>
-          <Icon name="content-save" size={18} color={theme.white} style={{ marginRight: 8 }} />
-          <Text style={[styles.saveBtnText, { color: theme.white }, getTextStyle()]}>{isSaving ? (isUrdu ? 'محفوظ ہو رہا ہے...' : 'Saving Changes...') : t('saveChanges')}</Text>
+        {/* Primary Save Button */}
+        <TouchableOpacity
+          style={styles.primarySaveButton}
+          onPress={handleSave}
+          disabled={isSaving}
+          activeOpacity={0.85}
+        >
+          <Icon name="content-save" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={[styles.primarySaveButtonText, getTextStyle()]}>
+            {isSaving ? 'Saving Changes...' : 'Save Profile Changes'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -699,244 +552,444 @@ export default function ProfileScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F2F3F2',
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   backButton: {
-    padding: 4,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gearButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#262A27',
   },
   container: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 40,
   },
-  publicRatingCard: {
+  personaCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  personaIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  personaTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  personaSubText: {
+    fontSize: 12,
+    color: '#8A908B',
+    marginTop: 2,
+  },
+  activePill: {
+    backgroundColor: '#2F9A3C',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 9999,
+  },
+  activePillText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  ratingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
-  verifiedPill: {
+  ratingValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  ratingSubText: {
+    fontSize: 12,
+    color: '#8A908B',
+    marginTop: 3,
+  },
+  verifiedScoreBadge: {
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+    paddingVertical: 2,
+    borderRadius: 9999,
   },
-  verifiedPillText: {
-    color: '#FFFFFF',
+  verifiedScoreText: {
+    color: '#2F9A3C',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '600',
   },
-  openReviewsBtn: {
+  viewReviewsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
     paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 6,
+    borderRadius: 9999,
   },
-  openReviewsBtnText: {
-    color: '#FFFFFF',
+  viewReviewsBtnText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: '#2F9A3C',
     marginRight: 2,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  cardHeading: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: '#8A908B',
+    marginTop: 2,
+  },
+  vehicleIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  readyBadge: {
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 9999,
+  },
+  readyBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#2F9A3C',
+  },
+  actionBtnSmall: {
+    backgroundColor: '#2F9A3C',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+  actionBtnSmallText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   photoContainer: {
     alignItems: 'center',
-    marginVertical: 12,
+    marginVertical: 4,
   },
-  photoCircleFrame: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
+  photoFrame: {
+    width: 80,
+    height: 80,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: '#2F9A3C',
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  photoImageCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+  photoImage: {
+    width: 74,
+    height: 74,
+    borderRadius: 22,
   },
-  photoCirclePlaceholder: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cameraBadgeBtn: {
+  cameraBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    bottom: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#2F9A3C',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  uploadPhotoBtn: {
+  userNameText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  phoneTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-  },
-  presetTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 14,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    gap: 4,
+    marginTop: 2,
     marginBottom: 12,
   },
-  cardTitleSub: {
+  phoneTagText: {
     fontSize: 13,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
+    color: '#8A908B',
   },
-  avatarRow: {
+  updatePhotoBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
   },
-  avatarBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  updatePhotoBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2F9A3C',
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#262A27',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  inputField: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#262A27',
+  },
+  verifiedStatusBadge: {
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 9999,
+  },
+  verifiedStatusText: {
+    color: '#2F9A3C',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  docSubLabel: {
+    fontSize: 11,
+    color: '#8A908B',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  docUploadBox: {
+    height: 96,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
+    overflow: 'hidden',
   },
-  avatarBadgeSelected: {
-    elevation: 2,
+  docImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
-  label: {
+  docUploadText: {
     fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    height: 40,
-    fontSize: 13,
-  },
-  readOnlyInput: {
-    opacity: 0.7,
-  },
-  hint: {
-    fontSize: 11,
+    color: '#8A908B',
+    fontWeight: '600',
     marginTop: 4,
   },
   bloodGroupRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginVertical: 4,
   },
-  bloodBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
+  bloodGroupChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
-  bloodBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+  bloodGroupChipSelected: {
+    backgroundColor: '#2F9A3C',
+    borderColor: '#2F9A3C',
   },
-  addContactBadge: {
+  bloodGroupChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  bloodGroupChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  addContactBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 9999,
   },
-  contactCardBox: {
-    padding: 12,
-    borderRadius: 10,
+  addContactBtnText: {
+    fontSize: 11,
+    color: '#2F9A3C',
+    fontWeight: '600',
+  },
+  contactRowBox: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    marginBottom: 10,
+    borderColor: '#E3E7E3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 16,
+    marginBottom: 8,
   },
-  vehicleBtn: {
+  contactNameText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  contactPhoneText: {
+    fontSize: 12,
+    color: '#2F9A3C',
+    fontWeight: '600',
+    marginTop: 2,
+    marginLeft: 24,
+  },
+  contactActionCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primarySaveButton: {
+    backgroundColor: '#2F9A3C',
+    height: 52,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    paddingVertical: 14,
     marginTop: 8,
+    marginBottom: 20,
     ...Platform.select({
       ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 3, height: 5 },
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
       },
       android: {
         elevation: 4,
       },
     }),
   },
-  vehicleBtnText: {
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginTop: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 4, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
-  },
-  saveBtnText: {
+  primarySaveButtonText: {
     color: '#FFFFFF',
-    fontWeight: '800',
     fontSize: 15,
+    fontWeight: '600',
   },
 });
+

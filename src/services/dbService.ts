@@ -56,7 +56,12 @@ export const saveOfferRidePostLocal = async (post: OfferRidePost): Promise<void>
   await AsyncStorage.setItem(KEYS.LOCAL_OFFER_RIDE_POSTS, JSON.stringify(posts));
 };
 
-export const getOfferRidePostsLocal = async (fromCity?: string, toCity?: string): Promise<OfferRidePost[]> => {
+export const getOfferRidePostsLocal = async (
+  fromCity?: string,
+  toCity?: string,
+  travelDate?: string,
+  timeRange?: string
+): Promise<OfferRidePost[]> => {
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
   if (!raw) return [];
   let posts: OfferRidePost[] = JSON.parse(raw);
@@ -67,6 +72,12 @@ export const getOfferRidePostsLocal = async (fromCity?: string, toCity?: string)
   }
   if (toCity && toCity.trim().length > 0) {
     posts = posts.filter((p) => p.toCity.toLowerCase() === toCity.trim().toLowerCase());
+  }
+  if (travelDate && travelDate.trim().length > 0) {
+    posts = posts.filter((p) => !p.travelDate || p.travelDate.toLowerCase().includes(travelDate.trim().toLowerCase()));
+  }
+  if (timeRange && timeRange.trim().length > 0) {
+    posts = posts.filter((p) => !p.departureTime || p.departureTime.toLowerCase().includes(timeRange.trim().toLowerCase()));
   }
   return posts;
 };
@@ -80,7 +91,12 @@ export const saveBookRidePostLocal = async (post: BookRidePost): Promise<void> =
   await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(posts));
 };
 
-export const getBookRidePostsLocal = async (fromCity?: string, toCity?: string): Promise<BookRidePost[]> => {
+export const getBookRidePostsLocal = async (
+  fromCity?: string,
+  toCity?: string,
+  travelDate?: string,
+  timeRange?: string
+): Promise<BookRidePost[]> => {
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
   if (!raw) return [];
   let posts: BookRidePost[] = JSON.parse(raw);
@@ -91,6 +107,12 @@ export const getBookRidePostsLocal = async (fromCity?: string, toCity?: string):
   }
   if (toCity && toCity.trim().length > 0) {
     posts = posts.filter((p) => p.toCity.toLowerCase() === toCity.trim().toLowerCase());
+  }
+  if (travelDate && travelDate.trim().length > 0) {
+    posts = posts.filter((p) => !p.travelDate || p.travelDate.toLowerCase().includes(travelDate.trim().toLowerCase()));
+  }
+  if (timeRange && timeRange.trim().length > 0) {
+    posts = posts.filter((p) => !p.departureTime || p.departureTime.toLowerCase().includes(timeRange.trim().toLowerCase()));
   }
   return posts;
 };

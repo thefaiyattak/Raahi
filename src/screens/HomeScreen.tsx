@@ -35,7 +35,7 @@ import {
   deleteBookRidePostLocal,
 } from '../services/dbService';
 import { fetchRoutes, getUniqueLocations } from '../services/sheetService';
-import { getNotificationsLocal } from '../services/notificationService';
+import { getNotificationsLocal, checkAndNotifyMatchingPost } from '../services/notificationService';
 import { calculateTrustScore } from '../services/trustScoreService';
 
 interface HomeScreenProps {
@@ -46,6 +46,7 @@ interface HomeScreenProps {
   onNavigateToSettings: () => void;
   onNavigateToNotifications: () => void;
   onSignOut: () => void;
+  onToggleProfileMode?: (newMode: 'passenger' | 'driver') => void;
 }
 
 export default function HomeScreen({
@@ -56,20 +57,34 @@ export default function HomeScreen({
   onNavigateToSettings,
   onNavigateToNotifications,
   onSignOut,
+  onToggleProfileMode,
 }: HomeScreenProps) {
   const { theme, isDarkMode } = useTheme();
   const { t, isUrdu, getTextStyle } = useLanguage();
 
   // Top Navigation Tabs: 'dashboard' (Left) | 'home' (Middle) | 'booking' (Right)
   const [mainNavTab, setMainNavTab] = useState<'dashboard' | 'home' | 'booking'>('dashboard');
-  // Sub Role Tab: 'passenger' | 'driver'
-  const [subRoleTab, setSubRoleTab] = useState<'passenger' | 'driver'>('passenger');
+  // Sub Role Tab: 'passenger' | 'driver' - initial state synced with user active profile
+  const [subRoleTab, setSubRoleTab] = useState<'passenger' | 'driver'>(userProfile?.activeProfile || 'passenger');
+
+  useEffect(() => {
+    if (userProfile?.activeProfile) {
+      setSubRoleTab(userProfile.activeProfile);
+    }
+  }, [userProfile?.activeProfile]);
+
+  const handleSubRoleChange = (role: 'passenger' | 'driver') => {
+    setSubRoleTab(role);
+    if (onToggleProfileMode) {
+      onToggleProfileMode(role);
+    }
+  };
 
   // Dynamic Cities from Google Sheet
   const [sheetCities, setSheetCities] = useState<string[]>([]);
 
   // Driver Registration check helper
-  const hasVehicleProfile = !!(userProfile?.driverProfile?.isVerified || userProfile?.vehicleDetails || userProfile?.verification?.drivingLicenseNumber);
+  const hasVehicleProfile = !!(userProfile?.driverProfile?.isLicenseVerified || userProfile?.vehicleDetails || userProfile?.verification?.drivingLicenseNumber);
 
   // Destination Filters for Booking Screen
   const [filterFromCity, setFilterFromCity] = useState('');
@@ -88,6 +103,7 @@ export default function HomeScreen({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showAddRouteModal, setShowAddRouteModal] = useState(false);
   const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [showPersonaSwitchModal, setShowPersonaSwitchModal] = useState(false);
 
   // Earnings Date Filter States
   const [earningsFilterMode, setEarningsFilterMode] = useState<'monthly' | 'custom'>('monthly');
@@ -196,34 +212,105 @@ export default function HomeScreen({
 
   const fetchPosts = useCallback(async () => {
     try {
-      // In Home Screen (Middle): NO filters applied!
-      // In Booking Screen (Right): Apply selected destination filters.
-      const fromFilter = mainNavTab === 'booking' ? filterFromCity : '';
-      const toFilter = mainNavTab === 'booking' ? filterToCity : '';
-
       if (subRoleTab === 'passenger') {
-        // Passenger mode -> View Driver Ride Offers
+        // Passenger mode -> View Driver Ride Offers matching passenger requirements
         if (viewScope === 'my_rides') {
           const myPosts = await getMyOfferRidePostsLocal(userProfile.uid);
           setOfferPosts(myPosts);
-        } else {
-          const data = await getOfferRidePostsLocal(fromFilter, toFilter);
+        } else if (mainNavTab === 'booking') {
+          const data = await getOfferRidePostsLocal(filterFromCity, filterToCity);
           setOfferPosts(data);
+        } else {
+          // In Active Now Tab (mainNavTab === 'home'):
+          // Query ALL active driver offers, and match strictly against the PASSENGER's posted seat requests (or saved routes)
+          const allDriverOffers = await getOfferRidePostsLocal();
+          const myPassengerRequests = await getMyBookRidePostsLocal(userProfile.uid);
+
+          let matchingDriverPosts: OfferRidePost[] = [];
+
+          if (myPassengerRequests.length > 0) {
+            // Match driver rides against any active seat request requirements posted by this passenger
+            matchingDriverPosts = allDriverOffers.filter((driverOffer) =>
+              myPassengerRequests.some((myReq) => {
+                const routeMatch =
+                  driverOffer.fromCity.trim().toLowerCase() === myReq.fromCity.trim().toLowerCase() &&
+                  driverOffer.toCity.trim().toLowerCase() === myReq.toCity.trim().toLowerCase();
+
+                const dateMatch =
+                  !myReq.travelDate ||
+                  !driverOffer.travelDate ||
+                  driverOffer.travelDate.trim().toLowerCase() === myReq.travelDate.trim().toLowerCase();
+
+                return routeMatch && dateMatch;
+              })
+            );
+          } else if (passengerQuickRoutesList.length > 0) {
+            // If no active seat request posted yet, match against passenger's saved quick routes
+            matchingDriverPosts = allDriverOffers.filter((driverOffer) =>
+              passengerQuickRoutesList.some(
+                (r) =>
+                  r.from.trim().toLowerCase() === driverOffer.fromCity.trim().toLowerCase() &&
+                  r.to.trim().toLowerCase() === driverOffer.toCity.trim().toLowerCase()
+              )
+            );
+          } else {
+            matchingDriverPosts = allDriverOffers;
+          }
+
+          setOfferPosts(matchingDriverPosts);
         }
       } else {
-        // Driver mode -> View Passenger Seat Requests
+        // Driver mode -> View Passenger Seat Requests matching driver requirements
         if (viewScope === 'my_rides') {
           const myPosts = await getMyBookRidePostsLocal(userProfile.uid);
           setBookPosts(myPosts);
-        } else {
-          const data = await getBookRidePostsLocal(fromFilter, toFilter);
+        } else if (mainNavTab === 'booking') {
+          const data = await getBookRidePostsLocal(filterFromCity, filterToCity);
           setBookPosts(data);
+        } else {
+          // In Active Now Tab (mainNavTab === 'home'):
+          // Query ALL active passenger requests, and match strictly against the DRIVER's posted ride offers (or saved routes)
+          const allPassengerRequests = await getBookRidePostsLocal();
+          const myDriverOffers = await getMyOfferRidePostsLocal(userProfile.uid);
+
+          let matchingPassengerPosts: BookRidePost[] = [];
+
+          if (myDriverOffers.length > 0) {
+            // Match passenger requests against any active ride offer requirements posted by this driver
+            matchingPassengerPosts = allPassengerRequests.filter((passengerReq) =>
+              myDriverOffers.some((myOffer) => {
+                const routeMatch =
+                  passengerReq.fromCity.trim().toLowerCase() === myOffer.fromCity.trim().toLowerCase() &&
+                  passengerReq.toCity.trim().toLowerCase() === myOffer.toCity.trim().toLowerCase();
+
+                const dateMatch =
+                  !myOffer.travelDate ||
+                  !passengerReq.travelDate ||
+                  passengerReq.travelDate.trim().toLowerCase() === myOffer.travelDate.trim().toLowerCase();
+
+                return routeMatch && dateMatch;
+              })
+            );
+          } else if (driverQuickRoutesList.length > 0) {
+            // If no active ride offer posted yet, match against driver's saved quick routes
+            matchingPassengerPosts = allPassengerRequests.filter((passengerReq) =>
+              driverQuickRoutesList.some(
+                (r) =>
+                  r.from.trim().toLowerCase() === passengerReq.fromCity.trim().toLowerCase() &&
+                  r.to.trim().toLowerCase() === passengerReq.toCity.trim().toLowerCase()
+              )
+            );
+          } else {
+            matchingPassengerPosts = allPassengerRequests;
+          }
+
+          setBookPosts(matchingPassengerPosts);
         }
       }
     } catch (e) {
       console.warn('Failed to load posts', e);
     }
-  }, [mainNavTab, subRoleTab, viewScope, filterFromCity, filterToCity, userProfile.uid]);
+  }, [mainNavTab, subRoleTab, viewScope, filterFromCity, filterToCity, passengerQuickRoutesList, driverQuickRoutesList, userProfile.uid]);
 
   // Notification count state
   const [unreadCount, setUnreadCount] = useState(0);
@@ -281,9 +368,20 @@ export default function HomeScreen({
       };
 
       await saveBookRidePostLocal(newPost);
+      
+      // Notify drivers operating on this route
+      await checkAndNotifyMatchingPost({
+        fromCity: bookFrom,
+        toCity: bookTo,
+        departureTime,
+        postedByRole: 'passenger',
+        posterName: userProfile.fullName,
+      });
+
       setShowBookFormModal(false);
-      Alert.alert('Success', 'Your ride request has been posted!');
+      Alert.alert('Success', 'Your ride request has been posted! Matching drivers will be notified.');
       fetchPosts();
+      fetchUnreadNotifications();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to create request.');
     }
@@ -417,146 +515,216 @@ export default function HomeScreen({
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      {/* Top Header matching instructions */}
-      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: 'transparent', paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-        {/* Left: Tappable Profile Header -> Opens Profile Screen */}
+      {/* Top Soft UI Elevated App Bar */}
+      <View style={styles.header}>
+        {/* Left: User Profile Avatar & Role Tag */}
         <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}
+          style={styles.profileHeaderBtn}
           onPress={onNavigateToProfile}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
         >
-          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center', marginRight: 10, borderWidth: 1, borderColor: '#A5D6A7' }}>
-            <Icon name="account" size={22} color="#2E7D32" />
+          <View style={styles.avatarContainer}>
+            <Icon
+              name={
+                userProfile.profilePicture === 'av1' ? 'account-tie' :
+                userProfile.profilePicture === 'av2' ? 'account-cowboy-hat' :
+                userProfile.profilePicture === 'av3' ? 'account-detective' :
+                userProfile.profilePicture === 'av4' ? 'account-graduation-cap' :
+                userProfile.profilePicture === 'av5' ? 'account-child' :
+                'account'
+              }
+              size={22}
+              color="#2F9A3C"
+            />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[{ fontSize: 11, color: theme.textSecondary, fontWeight: '600' }, getTextStyle()]}>Good morning 👋</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1, flexWrap: 'wrap', gap: 4 }}>
-              <Text style={[{ fontSize: 16, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
-                {userProfile.fullName || 'Faisal'}
-              </Text>
-              {subRoleTab === 'passenger' ? (
-                (userProfile.verification?.isCNICVerified && userProfile.verification?.phoneVerified) ? (
-                  <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#86EFAC' }}>
-                    <Icon name="check-decagram" size={12} color="#16A34A" style={{ marginRight: 3 }} />
-                    <Text style={{ color: '#15803D', fontSize: 10, fontWeight: '800' }}>Verified Passenger</Text>
-                  </View>
-                ) : (
-                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#FDE047' }}>
-                    <Icon name="alert-circle-outline" size={12} color="#D97706" style={{ marginRight: 3 }} />
-                    <Text style={{ color: '#B45309', fontSize: 10, fontWeight: '800' }}>Unverified Passenger</Text>
-                  </View>
-                )
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {userProfile.verification?.isLicenseVerified ? (
-                    <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#86EFAC' }}>
-                      <Icon name="check-decagram" size={12} color="#16A34A" style={{ marginRight: 3 }} />
-                      <Text style={{ color: '#15803D', fontSize: 10, fontWeight: '800' }}>Verified Driver</Text>
-                    </View>
-                  ) : (
-                    <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#FDE047' }}>
-                      <Icon name="alert-circle-outline" size={12} color="#D97706" style={{ marginRight: 3 }} />
-                      <Text style={{ color: '#B45309', fontSize: 10, fontWeight: '800' }}>Unverified Driver</Text>
-                    </View>
-                  )}
-                  {userProfile.verification?.isVehicleRegistrationVerified ? (
-                    <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#86EFAC' }}>
-                      <Icon name="car-check" size={12} color="#16A34A" style={{ marginRight: 3 }} />
-                      <Text style={{ color: '#15803D', fontSize: 10, fontWeight: '800' }}>Verified Vehicle</Text>
-                    </View>
-                  ) : (
-                    <View style={{ backgroundColor: '#FFF7ED', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#FFEDD5' }}>
-                      <Icon name="car-off-outline" size={12} color="#C2410C" style={{ marginRight: 3 }} />
-                      <Text style={{ color: '#C2410C', fontSize: 10, fontWeight: '800' }}>Unverified Vehicle</Text>
-                    </View>
-                  )}
+          <View style={styles.profileTextWrapper}>
+            <Text numberOfLines={1} style={[styles.userNameText, getTextStyle()]}>
+              {userProfile.fullName || 'Welcome, Traveler'}
+            </Text>
+            <View style={styles.roleTagRow}>
+              <View style={styles.roleBadge}>
+                <Text style={styles.roleBadgeText}>
+                  {subRoleTab === 'driver' ? 'Driver' : 'Passenger'}
+                </Text>
+              </View>
+              {subRoleTab === 'driver' && (
+                <View style={styles.verifiedTag}>
+                  <Icon name="check-decagram" size={12} color="#2F9A3C" style={{ marginRight: 2 }} />
+                  <Text style={styles.verifiedTagText}>Verified</Text>
                 </View>
               )}
             </View>
           </View>
         </TouchableOpacity>
 
-        {/* Right: SOS Button + Notification Icon */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {/* Right: Persona Switcher Badge + SOS Button + Notification Icon */}
+        <View style={styles.headerRightActions}>
+          {/* Persona Switcher Badge (Passenger <-> Driver) */}
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFEBEE', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, borderWidth: 1, borderColor: '#FFCDD2' }}
-            onPress={() => setShowEmergencyModal(true)}
+            style={styles.personaSwitchPill}
+            onPress={() => setShowPersonaSwitchModal(true)}
+            activeOpacity={0.85}
           >
-            <Icon name="shield-alert" size={18} color="#D32F2F" style={{ marginRight: 4 }} />
-            <Text style={{ color: '#D32F2F', fontSize: 11, fontWeight: '800' }}>SOS</Text>
+            <Icon
+              name={subRoleTab === 'driver' ? 'steering' : 'account'}
+              size={16}
+              color="#2F9A3C"
+            />
+            <Text style={styles.personaSwitchText}>
+              {subRoleTab === 'driver' ? 'Driver' : 'Passenger'}
+            </Text>
+            <Icon name="chevron-down" size={14} color="#262A27" />
           </TouchableOpacity>
 
+          {/* SOS Safety Button */}
           <TouchableOpacity
-            style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center' }}
-            onPress={onNavigateToNotifications}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#E53935',
+              paddingHorizontal: 11,
+              paddingVertical: 6,
+              borderRadius: 9999,
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#E53935',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.35,
+                  shadowRadius: 4,
+                },
+                android: {
+                  elevation: 3,
+                },
+              }),
+            }}
+            onPress={() => setShowEmergencyModal(true)}
+            activeOpacity={0.85}
           >
-            <Icon name="bell-outline" size={20} color="#2E7D32" />
+            <Icon name="shield-alert" size={14} color="#FFFFFF" style={{ marginRight: 3 }} />
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>SOS</Text>
+          </TouchableOpacity>
+
+          {/* Notifications Icon Button */}
+          <TouchableOpacity
+            style={styles.notifIconButton}
+            onPress={onNavigateToNotifications}
+            activeOpacity={0.85}
+          >
+            <Icon name="bell-outline" size={18} color="#262A27" />
             {unreadCount > 0 && (
-              <View style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: '#D32F2F' }} />
+              <View style={styles.unreadDotBadge} />
             )}
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* VIEW 1: DASHBOARD SCREEN (LEFT) */}
+      {/* VIEW 1: DASHBOARD / HOME SCREEN */}
       {mainNavTab === 'dashboard' && (
         <ScrollView contentContainerStyle={styles.feedContainer} showsVerticalScrollIndicator={false}>
-          {/* Role Selector Bar */}
-          <View style={{ flexDirection: 'row', backgroundColor: '#F0F4F0', borderRadius: 14, padding: 4, marginBottom: 16 }}>
-            <TouchableOpacity
-              style={[{ flex: 1, height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, subRoleTab === 'passenger' ? { backgroundColor: theme.primary } : null]}
-              onPress={() => setSubRoleTab('passenger')}
-            >
-              <Icon name="seat-passenger" size={18} color={subRoleTab === 'passenger' ? '#FFFFFF' : theme.textSecondary} style={{ marginRight: 6 }} />
-              <Text style={[{ fontSize: 13, fontWeight: '700', color: subRoleTab === 'passenger' ? '#FFFFFF' : theme.textSecondary }, getTextStyle()]}>Passenger</Text>
-            </TouchableOpacity>
+          {/* Top Integrated Booking / Post Action Card */}
+          <View style={styles.bookingCard}>
+            <View style={styles.bookingHeaderRow}>
+              <View style={styles.bookingTitleRow}>
+                <Icon name="routes" size={18} color="#2F9A3C" />
+                <Text style={[styles.bookingTitleText, getTextStyle()]}>
+                  {subRoleTab === 'driver' ? 'Offer Ride / Post Availability' : 'Find Ride / Post Request'}
+                </Text>
+              </View>
+              {(filterFromCity || filterToCity) && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setFilterFromCity('');
+                    setFilterToCity('');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.clearBtnText, getTextStyle()]}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
+            {/* Soft UI Route Filter Inputs */}
+            <View style={styles.routeInputRow}>
+              <TouchableOpacity
+                style={styles.routeInputField}
+                onPress={() => setShowFromPicker(true)}
+                activeOpacity={0.85}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    filterFromCity ? styles.routeInputText : styles.routeInputPlaceholder,
+                    getTextStyle(),
+                  ]}
+                >
+                  {filterFromCity || t('fromCity')}
+                </Text>
+                <Icon name="chevron-down" size={16} color="#8A908B" />
+              </TouchableOpacity>
+
+              <View style={styles.routeArrowCircle}>
+                <Icon name="arrow-right" size={14} color="#FFFFFF" />
+              </View>
+
+              <TouchableOpacity
+                style={styles.routeInputField}
+                onPress={() => setShowToPicker(true)}
+                activeOpacity={0.85}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    filterToCity ? styles.routeInputText : styles.routeInputPlaceholder,
+                    getTextStyle(),
+                  ]}
+                >
+                  {filterToCity || t('toCity')}
+                </Text>
+                <Icon name="chevron-down" size={16} color="#8A908B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Primary Green Post Action Button */}
             <TouchableOpacity
-              style={[{ flex: 1, height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, subRoleTab === 'driver' ? { backgroundColor: theme.primary } : null]}
+              style={styles.primaryPostBtn}
               onPress={() => {
-                if (!hasVehicleProfile) {
-                  Alert.alert(
-                    'Register as Driver Required 🚗',
-                    'You are not registered as a driver yet. Please go to Profile Menu and select "Register as a Driver" to submit your Driving License & Vehicle Registration.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Go to Profile Menu', onPress: onNavigateToProfile },
-                    ]
-                  );
-                  return;
+                if (subRoleTab === 'driver') {
+                  onNavigateToCreateRide(filterFromCity, filterToCity);
+                } else {
+                  handleOpenBookModal();
                 }
-                setSubRoleTab('driver');
               }}
+              activeOpacity={0.85}
             >
-              <Icon name={hasVehicleProfile ? "car-side" : "lock"} size={18} color={subRoleTab === 'driver' ? '#FFFFFF' : (hasVehicleProfile ? theme.textSecondary : '#D97706')} style={{ marginRight: 6 }} />
-              <Text style={[{ fontSize: 13, fontWeight: '700', color: subRoleTab === 'driver' ? '#FFFFFF' : (hasVehicleProfile ? theme.textSecondary : '#D97706') }, getTextStyle()]}>
-                {hasVehicleProfile ? 'Driver' : 'Driver 🔒'}
+              <Icon name="plus" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={[styles.primaryPostBtnText, getTextStyle()]}>
+                {subRoleTab === 'driver' ? t('offerRideBtn') : t('postSeatRequestBtn')}
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Active Trip Banner - Shown only when passenger books a seat with a driver */}
           {subRoleTab === 'passenger' && isPassengerSeatBooked && (
-            <View style={{ backgroundColor: '#1B3E1E', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+            <View style={styles.activeTripBanner}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5 }}>Active Trip</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#2E7D32', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', marginRight: 6 }} />
-                  <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>Live</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Active Trip</Text>
+                <View style={styles.liveTagPill}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2F9A3C', marginRight: 6 }} />
+                  <Text style={{ color: '#2F9A3C', fontSize: 11, fontWeight: '600' }}>Live</Text>
                 </View>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#A5D6A7', marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Islamabad (F-8)</Text>
-                    <Text style={{ fontSize: 11, color: '#A5D6A7', marginLeft: 'auto', fontWeight: '700' }}>02h : 44m : 54s</Text>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2F9A3C', marginRight: 8 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Islamabad (F-8)</Text>
+                    <Text style={{ fontSize: 11, color: '#2F9A3C', marginLeft: 'auto', fontWeight: '600' }}>02h : 44m</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF5350', marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Lahore (Thokar)</Text>
-                    <Text style={{ fontSize: 10, color: '#B0CAB2', marginLeft: 'auto' }}>Dep: 02:00 PM</Text>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#8A908B', marginRight: 8 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Lahore (Thokar)</Text>
+                    <Text style={{ fontSize: 11, color: '#8A908B', marginLeft: 'auto' }}>Dep: 02:00 PM</Text>
                   </View>
                 </View>
 
@@ -566,99 +734,113 @@ export default function HomeScreen({
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 8, marginTop: 12 }}>
-                <Icon name="car" size={16} color="#A5D6A7" style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 12, color: '#FFFFFF', fontWeight: '600' }}>Honda City AC • LHR-8822</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F3F2', borderRadius: 12, padding: 8, marginTop: 12 }}>
+                <Icon name="car" size={16} color="#2F9A3C" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 12, color: '#262A27', fontWeight: '600' }}>Honda City AC • LHR-8822</Text>
               </View>
             </View>
           )}
 
-          {/* Overview Analytics Grid (3 Equal Tiles in One Horizontal Row) */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Overview</Text>
-            <TouchableOpacity onPress={() => setShowHistoryModal(true)}>
-              <Text style={[{ fontSize: 12, color: theme.primary, fontWeight: '700' }, getTextStyle()]}>View details</Text>
+          {/* Overview Analytics Section Header */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, getTextStyle()]}>Overview</Text>
+            <TouchableOpacity onPress={() => setShowHistoryModal(true)} activeOpacity={0.7}>
+              <Text style={[styles.sectionActionText, getTextStyle()]}>View details</Text>
             </TouchableOpacity>
           </View>
 
           {subRoleTab === 'passenger' ? (
-            /* Passenger Mode: 2 Horizontal Tiles (Money Saved removed) */
-            <View style={{ flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginBottom: 16, width: '100%' }}>
+            /* Passenger Mode: 2 Soft UI Elevated Tiles */
+            <View style={styles.statsTilesRow}>
               {/* Tile 1: Trips Completed */}
-              <View style={{ width: '48.5%', backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1, borderRadius: 14, padding: 12, justifyContent: 'space-between' }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
-                  <Icon name="car-multiple" size={16} color="#2E7D32" />
+              <View style={styles.statTile}>
+                <View style={styles.statIconBadge}>
+                  <Icon name="car-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={[{ color: theme.textPrimary, fontSize: 18, fontWeight: '800' }]}>14</Text>
-                <Text numberOfLines={1} style={[{ fontSize: 11, fontWeight: '700', color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Trips Completed</Text>
-                <Text numberOfLines={1} style={{ fontSize: 10, color: '#2E7D32', fontWeight: '700', marginTop: 1 }}>+12% this month</Text>
+                <Text style={styles.statValue}>14</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trips Completed</Text>
+                <Text numberOfLines={1} style={styles.statSubText}>+12% this month</Text>
               </View>
 
-              {/* Tile 2: Safety & Trust */}
-              <TouchableOpacity
-                style={{ width: '48.5%', backgroundColor: '#1B3E1E', borderColor: '#2E7D32', borderWidth: 1, borderRadius: 14, padding: 12, justifyContent: 'space-between' }}
-                onPress={() => setShowHistoryModal(true)}
-                activeOpacity={0.8}
-              >
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#2E7D32', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
-                  <Icon name="shield-check" size={16} color="#FFFFFF" />
+              {/* Tile 2: Safety & Trust Score */}
+              <View style={styles.statTile}>
+                <View style={styles.statIconBadge}>
+                  <Icon name="shield-check" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={[{ color: '#FFFFFF', fontSize: 18, fontWeight: '800' }]}>99%</Text>
-                <Text numberOfLines={1} style={[{ fontSize: 11, fontWeight: '700', color: '#A5D6A7', marginTop: 2 }, getTextStyle()]}>Safety & Trust</Text>
-                <Text numberOfLines={1} style={{ fontSize: 10, color: '#81C784', fontWeight: '700', marginTop: 1 }}>⭐ 4.9 Rating</Text>
-              </TouchableOpacity>
+                <Text style={styles.statValue}>99%</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trust Score</Text>
+                <Text numberOfLines={1} style={styles.statSubText}>Verified Traveler</Text>
+              </View>
             </View>
           ) : (
-            /* Driver Mode: 3 Horizontal Tiles (Includes Money Saved) */
-            <View style={{ flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginBottom: 16, width: '100%' }}>
-              {/* Tile 1: Trips Completed */}
-              <View style={{ width: '31.5%', backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, justifyContent: 'space-between' }}>
-                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
-                  <Icon name="car-multiple" size={14} color="#2E7D32" />
-                </View>
-                <Text style={[{ color: theme.textPrimary, fontSize: 16, fontWeight: '800' }]}>14</Text>
-                <Text numberOfLines={1} style={[{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Trips Done</Text>
-                <Text numberOfLines={1} style={{ fontSize: 9, color: '#2E7D32', fontWeight: '700', marginTop: 1 }}>+12% month</Text>
-              </View>
-
-              {/* Tile 2: Earnings */}
+            /* Driver Mode: 3 Soft UI Elevated Tiles */
+            <View style={styles.statsTilesRow}>
+              {/* Tile 1: Driver Earnings */}
               <TouchableOpacity
-                style={{ width: '31.5%', backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, justifyContent: 'space-between' }}
+                style={styles.statTile3}
                 onPress={() => setShowEarningsModal(true)}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#E8F5E9', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
-                  <Icon name="wallet" size={14} color="#2E7D32" />
+                <View style={styles.statIconBadge}>
+                  <Icon name="cash-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={[{ color: theme.textPrimary, fontSize: 15, fontWeight: '800' }]}>Rs. 14.5k</Text>
-                <Text numberOfLines={1} style={[{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Earnings</Text>
-                <Text numberOfLines={1} style={{ fontSize: 9, color: '#2E7D32', fontWeight: '700', marginTop: 1 }}>+18% month</Text>
+                <Text numberOfLines={1} style={styles.statValue}>Rs 23k</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Earnings</Text>
+                <Text numberOfLines={1} style={styles.statSubText}>Tap for log</Text>
               </TouchableOpacity>
 
-              {/* Tile 3: Safety & Trust */}
-              <TouchableOpacity
-                style={{ width: '31.5%', backgroundColor: '#1B3E1E', borderColor: '#2E7D32', borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, justifyContent: 'space-between' }}
-                onPress={() => setShowHistoryModal(true)}
-                activeOpacity={0.8}
-              >
-                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#2E7D32', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
-                  <Icon name="shield-check" size={14} color="#FFFFFF" />
+              {/* Tile 2: Trips Completed */}
+              <View style={styles.statTile3}>
+                <View style={styles.statIconBadge}>
+                  <Icon name="car-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={[{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }]}>99%</Text>
-                <Text numberOfLines={1} style={[{ fontSize: 10, fontWeight: '700', color: '#A5D6A7', marginTop: 2 }, getTextStyle()]}>Safety Trust</Text>
-                <Text numberOfLines={1} style={{ fontSize: 9, color: '#81C784', fontWeight: '700', marginTop: 1 }}>⭐ 4.9 Rating</Text>
+                <Text style={styles.statValue}>14</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trips</Text>
+                <Text numberOfLines={1} style={styles.statSubText}>+12% month</Text>
+              </View>
+
+              {/* Tile 3: Driver Trust Score */}
+              <TouchableOpacity
+                style={styles.statTile3}
+                onPress={() => setShowHistoryModal(true)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.statIconBadge}>
+                  <Icon name="shield-check" size={18} color="#2F9A3C" />
+                </View>
+                <Text style={styles.statValue}>99%</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trust</Text>
+                <Text numberOfLines={1} style={styles.statSubText}>⭐ 4.9 (32)</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {/* Quick Saved Routes Hub (Role specific: Passenger vs Driver) */}
-          <View style={[styles.dashCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 20,
+            padding: 16,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: '#E3E7E3',
+            ...Platform.select({
+              ios: {
+                shadowColor: '#262A27',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.08,
+                shadowRadius: 10,
+              },
+              android: {
+                elevation: 3,
+              },
+            }),
+          }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
+              <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
                 Quick Saved Routes
               </Text>
-              <TouchableOpacity onPress={() => setShowAddRouteModal(true)}>
-                <Text style={[{ fontSize: 12, color: theme.primary, fontWeight: '700' }, getTextStyle()]}>Add New</Text>
+              <TouchableOpacity onPress={() => setShowAddRouteModal(true)} activeOpacity={0.8}>
+                <Text style={[{ fontSize: 12, color: '#2F9A3C', fontWeight: '600' }, getTextStyle()]}>Add New</Text>
               </TouchableOpacity>
             </View>
 
@@ -666,11 +848,22 @@ export default function HomeScreen({
               {(subRoleTab === 'passenger' ? passengerQuickRoutesList : driverQuickRoutesList).map((routeItem) => (
                 <TouchableOpacity
                   key={routeItem.id}
-                  style={[styles.quickRouteCardItem, { backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E3E7E3',
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    marginBottom: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
                   onPress={() => handleSelectQuickRoute(routeItem.from, routeItem.to)}
-                  activeOpacity={0.7}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
                     {routeItem.from} ➔ {routeItem.to}
                   </Text>
                 </TouchableOpacity>
@@ -679,9 +872,27 @@ export default function HomeScreen({
           </View>
 
           {/* Recent Trip History Feed (Role specific: Passenger vs Driver) */}
-          <View style={[styles.dashCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 20,
+            padding: 16,
+            marginBottom: 24,
+            borderWidth: 1,
+            borderColor: '#E3E7E3',
+            ...Platform.select({
+              ios: {
+                shadowColor: '#262A27',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.08,
+                shadowRadius: 10,
+              },
+              android: {
+                elevation: 3,
+              },
+            }),
+          }}>
             <View style={{ marginBottom: 12 }}>
-              <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
+              <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
                 Recent Completed Trip
               </Text>
             </View>
@@ -730,51 +941,91 @@ export default function HomeScreen({
       {/* VIEW 2: ACTIVE NOW LIVE FEED SCREEN (MIDDLE TAB) */}
       {mainNavTab === 'home' && (
         <ScrollView contentContainerStyle={styles.feedContainer} showsVerticalScrollIndicator={false}>
-          {/* Real-time Pulsating Live Banner */}
-          <View style={{ backgroundColor: '#1B4D1A', paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#2E7D32' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ADE80', marginRight: 8 }} />
-              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 0.8 }}>
-                LIVE FEED • UPDATING REAL-TIME ⚡
-              </Text>
-            </View>
-            <View style={{ backgroundColor: '#2E7D32', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>
-                {subRoleTab === 'passenger' ? `${offerPosts.length} Active Rides` : `${bookPosts.length} Active Requests`}
-              </Text>
-            </View>
-          </View>
-
-          {/* Unverified User Prompt (Per Handwritten Note Page 1) */}
+          {/* Unverified User Prompt */}
           {!(userProfile?.isVerified || (userProfile?.verification?.isCNICVerified && userProfile?.verification?.phoneVerified !== false)) && (
-            <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 14, padding: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                <Icon name="shield-alert" size={20} color="#D97706" />
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: '#E3E7E3',
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#262A27',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 10,
+                },
+                android: {
+                  elevation: 3,
+                },
+              }),
+            }}>
+              <View style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                backgroundColor: 'rgba(47, 154, 60, 0.10)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: 12,
+              }}>
+                <Icon name="shield-check" size={20} color="#2F9A3C" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[{ fontSize: 13, fontWeight: '800', color: '#92400E' }, getTextStyle()]}>
-                  Account Verification Required 🛡️
+                <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
+                  Account Verification Required
                 </Text>
-                <Text style={[{ fontSize: 11, color: '#B45309', marginTop: 2 }, getTextStyle()]}>
-                  Verify your account (CNIC & Phone) in Profile to unlock full live ride details, book rides, & set up a Driver profile.
+                <Text style={[{ fontSize: 11, color: '#8A908B', marginTop: 2 }, getTextStyle()]}>
+                  Verify your account in Profile to unlock full live rides and seat booking features.
                 </Text>
                 <TouchableOpacity
-                  style={{ backgroundColor: '#D97706', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, alignSelf: 'flex-start', marginTop: 8 }}
+                  style={{
+                    backgroundColor: '#2F9A3C',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                    alignSelf: 'flex-start',
+                    marginTop: 8,
+                  }}
                   onPress={onNavigateToProfile}
+                  activeOpacity={0.85}
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Verify Account Now ➔</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Verify Account Now</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
 
           {/* Posts Live Feed Cards */}
-          <View style={{ padding: 16 }}>
+          <View>
             {subRoleTab === 'passenger' ? (
               offerPosts.length === 0 ? (
-                <View style={[styles.emptyCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-                  <Icon name="car-off" size={40} color={theme.textMuted} />
-                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }, getTextStyle()]}>
+                <View style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 20,
+                  padding: 24,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: '#262A27',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.06,
+                      shadowRadius: 10,
+                    },
+                    android: {
+                      elevation: 2,
+                    },
+                  }),
+                }}>
+                  <Icon name="car-off" size={40} color="#8A908B" />
+                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27', marginTop: 8 }, getTextStyle()]}>
                     {t('noRidesFound')}
                   </Text>
                 </View>
@@ -872,9 +1123,28 @@ export default function HomeScreen({
               )
             ) : (
               bookPosts.length === 0 ? (
-                <View style={[styles.emptyCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-                  <Icon name="account-search" size={40} color={theme.textMuted} />
-                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }, getTextStyle()]}>
+                <View style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 20,
+                  padding: 24,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: '#262A27',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.06,
+                      shadowRadius: 10,
+                    },
+                    android: {
+                      elevation: 2,
+                    },
+                  }),
+                }}>
+                  <Icon name="account-search" size={40} color="#8A908B" />
+                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27', marginTop: 8 }, getTextStyle()]}>
                     {isUrdu ? 'کوئی درخواست نہیں ملی' : 'No Passenger Requests Found'}
                   </Text>
                 </View>
@@ -958,178 +1228,284 @@ export default function HomeScreen({
         </ScrollView>
       )}
 
-      {/* VIEW 3: BOOKING SCREEN (RIGHT) (Mockup Image 5) */}
-      {mainNavTab === 'booking' && (
-        <ScrollView contentContainerStyle={styles.feedContainer}>
-          {/* Destination Filter Panel */}
-          <View style={[styles.filterCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-            <Text style={[styles.filterTitle, { color: theme.primary }, getTextStyle()]}>
-              <Icon name="filter-variant" size={16} color={theme.primary} /> {t('applyFiltersTitle')}
-            </Text>
-            <View style={styles.filterRow}>
-              <TouchableOpacity style={[styles.filterInput, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowFromPicker(true)}>
-                <Text style={[filterFromCity ? [styles.filterValueText, { color: theme.textPrimary }] : [styles.filterPlaceholder, { color: theme.textMuted }], getTextStyle()]}>
-                  {filterFromCity || t('fromCity')}
-                </Text>
-                <Icon name="chevron-down" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
 
-              <Icon name="arrow-right" size={20} color={theme.textMuted} style={styles.arrowIcon} />
-
-              <TouchableOpacity style={[styles.filterInput, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowToPicker(true)}>
-                <Text style={[filterToCity ? [styles.filterValueText, { color: theme.textPrimary }] : [styles.filterPlaceholder, { color: theme.textMuted }], getTextStyle()]}>
-                  {filterToCity || t('toCity')}
-                </Text>
-                <Icon name="chevron-down" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {(filterFromCity || filterToCity) && (
-              <TouchableOpacity
-                style={styles.clearFilterBtn}
-                onPress={() => {
-                  setFilterFromCity('');
-                  setFilterToCity('');
-                }}
-              >
-                <Text style={[styles.clearFilterText, { color: theme.primary }, getTextStyle()]}>{t('clearFilters')}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Primary Action Button */}
-          <TouchableOpacity
-            style={[styles.bookingActionBtn, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              if (subRoleTab === 'driver') {
-                onNavigateToCreateRide(filterFromCity, filterToCity);
-              } else {
-                handleOpenBookModal();
-              }
-            }}
-          >
-            <Icon name="plus-circle" size={22} color={theme.white} style={{ marginRight: 8 }} />
-            <Text style={[styles.bookingActionBtnText, { color: theme.white }, getTextStyle()]}>
-              {subRoleTab === 'driver' ? t('offerRideBtn') : t('postSeatRequestBtn')}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      )}
 
 
 
       {/* Full Screen Book Ride / Seat Request Form Modal (Mockup Image 5) */}
       <Modal visible={showBookFormModal} animationType="slide" transparent={false} onRequestClose={() => setShowBookFormModal(false)}>
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-          <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F2F3F2' }]}>
+          <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
           {/* Header */}
-          <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
-            <TouchableOpacity style={styles.backButton} onPress={() => setShowBookFormModal(false)}>
-              <Icon name="arrow-left" size={24} color={theme.primary} />
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            backgroundColor: '#FFFFFF',
+            borderBottomWidth: 1,
+            borderBottomColor: '#E3E7E3',
+            ...Platform.select({
+              ios: {
+                shadowColor: '#262A27',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.06,
+                shadowRadius: 10,
+              },
+              android: {
+                elevation: 3,
+              },
+            }),
+          }}>
+            <TouchableOpacity
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 16,
+                backgroundColor: '#FFFFFF',
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: '#E3E7E3',
+              }}
+              onPress={() => setShowBookFormModal(false)}
+              activeOpacity={0.8}
+            >
+              <Icon name="arrow-left" size={20} color="#262A27" />
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>
+            <Text style={[{ fontSize: 18, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
               {t('postSeatRequestBtn')}
             </Text>
-            <View style={{ width: 24 }} />
+            <View style={{ width: 44 }} />
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
             {/* Route & Locations Card */}
-            <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-              <Text style={[styles.cardTitle, { color: theme.primary }, getTextStyle()]}>ROUTE & LOCATIONS</Text>
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: '#E3E7E3',
+              marginBottom: 16,
+            }}>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#2F9A3C', marginBottom: 10, letterSpacing: 0.5 }, getTextStyle()]}>ROUTE & LOCATIONS</Text>
 
-              <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('fromCity')}</Text>
-              <TouchableOpacity style={[styles.pickerSelector, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowFromPicker(true)}>
-                <Icon name="help-circle-outline" size={20} color={theme.primary} style={styles.pickerIcon} />
-                <Text style={[styles.pickerSelectorText, !bookFrom ? { color: theme.textMuted } : { color: theme.textPrimary }, getTextStyle()]}>
-                  {bookFrom || t('selectDepartureCity')}
-                </Text>
-                <Icon name="chevron-down" size={20} color={theme.textMuted} />
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('fromCity')}</Text>
+              <TouchableOpacity
+                style={{
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 8,
+                }}
+                onPress={() => setShowFromPicker(true)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Icon name="map-marker" size={18} color="#2F9A3C" style={{ marginRight: 8 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookFrom ? '#262A27' : '#8A908B' }, getTextStyle()]}>
+                    {bookFrom || t('selectDepartureCity')}
+                  </Text>
+                </View>
+                <Icon name="chevron-down" size={18} color="#8A908B" />
               </TouchableOpacity>
 
               <TextInput
-                style={[styles.detailInput, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
+                style={[{
+                  height: 44,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  fontSize: 13,
+                  color: '#262A27',
+                  marginBottom: 14,
+                }, getTextStyle()]}
                 placeholder="Landmark/Pickup details (e.g. Metro Pole, Gate 3)"
-                placeholderTextColor={theme.textMuted}
+                placeholderTextColor="#8A908B"
               />
 
-              <View style={styles.routeDivider} />
-
-              <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('toCity')}</Text>
-              <TouchableOpacity style={[styles.pickerSelector, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowToPicker(true)}>
-                <Icon name="help-circle-outline" size={20} color={theme.primary} style={styles.pickerIcon} />
-                <Text style={[styles.pickerSelectorText, !bookTo ? { color: theme.textMuted } : { color: theme.textPrimary }, getTextStyle()]}>
-                  {bookTo || t('selectDestinationCity')}
-                </Text>
-                <Icon name="chevron-down" size={20} color={theme.textMuted} />
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('toCity')}</Text>
+              <TouchableOpacity
+                style={{
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 8,
+                }}
+                onPress={() => setShowToPicker(true)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Icon name="map-marker" size={18} color="#2F9A3C" style={{ marginRight: 8 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookTo ? '#262A27' : '#8A908B' }, getTextStyle()]}>
+                    {bookTo || t('selectDestinationCity')}
+                  </Text>
+                </View>
+                <Icon name="chevron-down" size={18} color="#8A908B" />
               </TouchableOpacity>
 
               <TextInput
-                style={[styles.detailInput, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
+                style={[{
+                  height: 44,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  fontSize: 13,
+                  color: '#262A27',
+                  marginBottom: 14,
+                }, getTextStyle()]}
                 placeholder="Dropoff details (e.g. Block 5, next to mall)"
-                placeholderTextColor={theme.textMuted}
+                placeholderTextColor="#8A908B"
               />
 
               {/* Air Conditioning Toggle */}
-              <View style={styles.switchContainer}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 10 }}>
                 <View>
-                  <Text style={[styles.switchLabel, { color: theme.textPrimary }, getTextStyle()]}>Air Conditioning (AC)</Text>
-                  <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>Enable AC premium tier pricing</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Air Conditioning (AC)</Text>
+                  <Text style={[{ fontSize: 11, color: '#8A908B', marginTop: 2 }, getTextStyle()]}>Enable AC premium tier pricing</Text>
                 </View>
-                <TouchableOpacity style={[styles.toggleACBtn, { backgroundColor: isAC ? theme.primaryBackground : '#FFF3E0' }]} onPress={() => setIsAC(!isAC)}>
-                  <Icon name={isAC ? 'snowflake' : 'fan'} size={18} color={isAC ? theme.primary : '#E65100'} />
-                  <Text style={{ marginLeft: 6, fontWeight: '700', color: isAC ? theme.primary : '#E65100' }}>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: isAC ? 'rgba(47, 154, 60, 0.10)' : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: isAC ? '#2F9A3C' : '#E3E7E3',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                  }}
+                  onPress={() => setIsAC(!isAC)}
+                  activeOpacity={0.8}
+                >
+                  <Icon name={isAC ? 'snowflake' : 'fan'} size={16} color={isAC ? '#2F9A3C' : '#8A908B'} />
+                  <Text style={{ marginLeft: 6, fontWeight: '600', fontSize: 12, color: isAC ? '#2F9A3C' : '#8A908B' }}>
                     {isAC ? 'AC' : 'Non-AC'}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={[styles.inputLabel, { color: theme.textPrimary, marginTop: 12 }, getTextStyle()]}>Number of Passengers *</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginTop: 8, marginBottom: 6 }, getTextStyle()]}>Number of Passengers *</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }]}
+                style={{
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  fontSize: 13,
+                  color: '#262A27',
+                  marginBottom: 10,
+                }}
                 keyboardType="numeric"
                 value={passengersCount}
                 onChangeText={setPassengersCount}
               />
 
-              <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>Number of Bags</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>Number of Bags</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }]}
+                style={{
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  fontSize: 13,
+                  color: '#262A27',
+                  marginBottom: 10,
+                }}
                 keyboardType="numeric"
                 value={bagsCount}
                 onChangeText={setBagsCount}
               />
 
-              <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('departureTime')}</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('departureTime')}</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }]}
+                style={{
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  paddingHorizontal: 14,
+                  fontSize: 13,
+                  color: '#262A27',
+                }}
                 value={departureTime}
                 onChangeText={setDepartureTime}
               />
 
               {/* Fare Summary (From Google Sheet) */}
-              <View style={[styles.fareCardBox, { backgroundColor: theme.primaryBackground, borderColor: theme.primaryBorder, marginTop: 12 }]}>
-                <Text style={[{ fontSize: 12, fontWeight: '700', color: theme.primary, marginBottom: 6 }, getTextStyle()]}>
+              <View style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 18,
+                padding: 16,
+                marginTop: 14,
+                borderWidth: 1,
+                borderColor: '#E3E7E3',
+              }}>
+                <Text style={[{ fontSize: 11, fontWeight: '600', color: '#2F9A3C', marginBottom: 6, letterSpacing: 0.5 }, getTextStyle()]}>
                   FARE SUMMARY (FROM GOOGLE SHEET)
                 </Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={[{ fontSize: 13, color: theme.textSecondary }, getTextStyle()]}>Tier Option:</Text>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>
+                  <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Tier Option:</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
                     {isAC ? 'AC Premium' : 'Non-AC Standard'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                  <Text style={[{ fontSize: 14, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>Fare per seat:</Text>
-                  <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.primary }]}>Rs. 1800.00</Text>
+                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Fare per seat:</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#2F9A3C' }}>Rs. 1800.00</Text>
                 </View>
               </View>
             </View>
 
             {/* Submit Button at Bottom */}
             <TouchableOpacity
-              style={[styles.submitFormBtn, { backgroundColor: theme.primary }]}
+              style={{
+                backgroundColor: '#2F9A3C',
+                height: 52,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 16,
+                marginBottom: 32,
+                ...Platform.select({
+                  ios: {
+                    shadowColor: '#2F9A3C',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.28,
+                    shadowRadius: 12,
+                  },
+                  android: {
+                    elevation: 4,
+                  },
+                }),
+              }}
               onPress={handleCreatePassengerRequest}
+              activeOpacity={0.85}
             >
-              <Text style={[styles.submitFormBtnText, { color: theme.white }, getTextStyle()]}>
+              <Text style={[{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>
                 {t('submitPassengerRequest')}
               </Text>
             </TouchableOpacity>
@@ -1466,31 +1842,76 @@ export default function HomeScreen({
 
               {/* Action Buttons: WhatsApp, Call, Send Booking Request */}
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: '#25D366' }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#2F9A3C',
+                  marginBottom: 10,
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: '#2F9A3C',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 8,
+                    },
+                    android: {
+                      elevation: 3,
+                    },
+                  }),
+                }}
                 onPress={() => {
                   Linking.openURL(`https://wa.me/923449793574?text=Hi%20${encodeURIComponent(selectedRideDetail?.driverName || '')}%2C%20I%20want%20to%20book%20a%20seat%20from%20${encodeURIComponent(selectedRideDetail?.fromCity || '')}%20to%20${encodeURIComponent(selectedRideDetail?.toCity || '')}.`);
                 }}
+                activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>WhatsApp Driver</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Driver</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: theme.primary }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  marginBottom: 10,
+                }}
                 onPress={() => handleTriggerEmergencyCall('03449793574')}
+                activeOpacity={0.85}
               >
-                <Icon name="phone" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>Call Driver Directly</Text>
+                <Icon name="phone" size={20} color="#262A27" style={{ marginRight: 8 }} />
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Call Driver Directly</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: '#2E7D32', marginTop: 4 }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#2F9A3C',
+                  marginTop: 2,
+                }}
                 onPress={() => {
                   setSelectedRideDetail(null);
                   Alert.alert('Booking Request Sent! 🚗', `Your seat booking request for ${selectedRideDetail?.fromCity} to ${selectedRideDetail?.toCity} has been dispatched to ${selectedRideDetail?.driverName}.`);
                 }}
+                activeOpacity={0.85}
               >
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>Send Seat Booking Request</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>Send Seat Booking Request</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -1505,52 +1926,114 @@ export default function HomeScreen({
           onPress={() => setSelectedSeatDetail(null)}
         >
           <TouchableWithoutFeedback>
-            <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, padding: 20 }]}>
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              padding: 20,
+              borderWidth: 1,
+              borderColor: '#E3E7E3',
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#262A27',
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 0.16,
+                  shadowRadius: 16,
+                },
+                android: {
+                  elevation: 8,
+                },
+              }),
+            }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <View style={[styles.routeBadgeBook, { backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 6 }]}>
-                  <Text style={[styles.routeBadgeTextBook, { fontSize: 14 }, getTextStyle()]}>
+                <View style={{ backgroundColor: 'rgba(47, 154, 60, 0.10)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>
                     {selectedSeatDetail?.fromCity} ➔ {selectedSeatDetail?.toCity}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedSeatDetail(null)} style={{ padding: 4 }}>
-                  <Icon name="close" size={22} color={theme.textSecondary} />
+                <TouchableOpacity onPress={() => setSelectedSeatDetail(null)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F3F2', justifyContent: 'center', alignItems: 'center' }}>
+                  <Icon name="close" size={18} color="#262A27" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.textPrimary, marginBottom: 4 }, getTextStyle()]}>
+              <Text style={[{ fontSize: 18, fontWeight: '600', color: '#262A27', marginBottom: 4 }, getTextStyle()]}>
                 Passenger: {selectedSeatDetail?.passengerName}
               </Text>
-              <Text style={[{ fontSize: 13, color: theme.textSecondary, marginBottom: 18 }, getTextStyle()]}>
+              <Text style={[{ fontSize: 13, color: '#8A908B', marginBottom: 18 }, getTextStyle()]}>
                 Requested Departure Time: {selectedSeatDetail?.departureTime}
               </Text>
 
               {/* Action Buttons for Driver */}
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: '#25D366' }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#2F9A3C',
+                  marginBottom: 10,
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: '#2F9A3C',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 8,
+                    },
+                    android: {
+                      elevation: 3,
+                    },
+                  }),
+                }}
                 onPress={() => {
                   Linking.openURL(`https://wa.me/923449793574?text=Hi%20${encodeURIComponent(selectedSeatDetail?.passengerName || '')}%2C%20I%20have%20an%20available%20seat%20for%20your%20ride%20to%20${encodeURIComponent(selectedSeatDetail?.toCity || '')}.`);
                 }}
+                activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>WhatsApp Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Passenger</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: theme.primary }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  marginBottom: 10,
+                }}
                 onPress={() => handleTriggerEmergencyCall('03449793574')}
+                activeOpacity={0.85}
               >
-                <Icon name="phone" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>Call Passenger Directly</Text>
+                <Icon name="phone" size={20} color="#262A27" style={{ marginRight: 8 }} />
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Call Passenger Directly</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: '#2E7D32', marginTop: 4 }]}
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#2F9A3C',
+                  marginTop: 2,
+                }}
                 onPress={() => {
                   setSelectedSeatDetail(null);
                   Alert.alert('Seat Offer Sent! 🤝', `You offered a seat to ${selectedSeatDetail?.passengerName} for the route ${selectedSeatDetail?.fromCity} to ${selectedSeatDetail?.toCity}.`);
                 }}
+                activeOpacity={0.85}
               >
-                <Text style={[styles.modalActionBtnText, getTextStyle()]}>Offer Seat to Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>Offer Seat to Passenger</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -1660,6 +2143,181 @@ export default function HomeScreen({
                   </TouchableOpacity>
                 )}
               />
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
+
+
+      {/* Quick Profile Persona Switcher Modal (Passenger <-> Driver) */}
+      <Modal visible={showPersonaSwitchModal} transparent animationType="fade" onRequestClose={() => setShowPersonaSwitchModal(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPersonaSwitchModal(false)}
+        >
+          <TouchableWithoutFeedback>
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              padding: 20,
+              borderWidth: 1,
+              borderColor: '#E3E7E3',
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#262A27',
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 0.16,
+                  shadowRadius: 16,
+                },
+                android: {
+                  elevation: 8,
+                },
+              }),
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(47, 154, 60, 0.10)', justifyContent: 'center', alignItems: 'center' }}>
+                    <Icon name="swap-horizontal" size={20} color="#2F9A3C" />
+                  </View>
+                  <Text style={[{ fontSize: 16, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
+                    Switch Active Profile
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowPersonaSwitchModal(false)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F3F2', justifyContent: 'center', alignItems: 'center' }}>
+                  <Icon name="close" size={18} color="#262A27" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[{ fontSize: 12, color: '#8A908B', marginBottom: 16, lineHeight: 17 }, getTextStyle()]}>
+                Choose how you want to use Raahi right now. Your dashboard and live feed will immediately adapt.
+              </Text>
+
+              {/* 2 Switch Buttons: Driver & Passenger */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                {/* 1. Passenger Button */}
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 16,
+                    paddingHorizontal: 8,
+                    borderRadius: 18,
+                    backgroundColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#E3E7E3',
+                    gap: 6,
+                    ...Platform.select({
+                      ios: {
+                        shadowColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#262A27',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: subRoleTab === 'passenger' ? 0.25 : 0.06,
+                        shadowRadius: 8,
+                      },
+                      android: {
+                        elevation: 3,
+                      },
+                    }),
+                  }}
+                  onPress={() => {
+                    handleSubRoleChange('passenger');
+                    setShowPersonaSwitchModal(false);
+                    Alert.alert('Profile Switched! 👤', 'You are now in Passenger Mode.');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon
+                    name="account"
+                    size={24}
+                    color={subRoleTab === 'passenger' ? '#FFFFFF' : '#262A27'}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '600',
+                      color: subRoleTab === 'passenger' ? '#FFFFFF' : '#262A27',
+                    }}
+                  >
+                    Passenger
+                  </Text>
+                  {subRoleTab === 'passenger' && (
+                    <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }}>ACTIVE</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {/* 2. Driver Button */}
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 16,
+                    paddingHorizontal: 8,
+                    borderRadius: 18,
+                    backgroundColor: subRoleTab === 'driver' ? '#2F9A3C' : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: subRoleTab === 'driver' ? '#2F9A3C' : '#E3E7E3',
+                    gap: 6,
+                    ...Platform.select({
+                      ios: {
+                        shadowColor: subRoleTab === 'driver' ? '#2F9A3C' : '#262A27',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: subRoleTab === 'driver' ? 0.25 : 0.06,
+                        shadowRadius: 8,
+                      },
+                      android: {
+                        elevation: 3,
+                      },
+                    }),
+                  }}
+                  onPress={() => {
+                    handleSubRoleChange('driver');
+                    setShowPersonaSwitchModal(false);
+                    Alert.alert('Profile Switched! 🚗', 'You are now in Driver Mode.');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon
+                    name="steering"
+                    size={24}
+                    color={subRoleTab === 'driver' ? '#FFFFFF' : '#262A27'}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '600',
+                      color: subRoleTab === 'driver' ? '#FFFFFF' : '#262A27',
+                    }}
+                  >
+                    Driver
+                  </Text>
+                  {subRoleTab === 'driver' && (
+                    <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }}>ACTIVE</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={{
+                  height: 48,
+                  borderRadius: 16,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: '#E3E7E3',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onPress={() => setShowPersonaSwitchModal(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
         </TouchableOpacity>
@@ -2086,52 +2744,82 @@ export default function HomeScreen({
         </SafeAreaView>
       </Modal>
 
-      {/* Modern 4-Item Bottom Navigation Bar (Swapped Profile with Settings, Floating plus removed per instructions) */}
-      <View style={{
-        flexDirection: 'row',
-        height: 60,
-        backgroundColor: theme.cardBackground,
-        borderTopWidth: 1,
-        borderTopColor: theme.border,
-        alignItems: 'center',
-        justifyContent: 'space-around',
-        paddingHorizontal: 8,
-      }}>
-        {/* 1. Home Tab */}
-        <TouchableOpacity
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => setMainNavTab('dashboard')}
-        >
-          <Icon name="home-variant" size={24} color={mainNavTab === 'dashboard' ? '#2E7D32' : '#9CA3AF'} />
-          <Text style={{ fontSize: 11, fontWeight: '700', marginTop: 2, color: mainNavTab === 'dashboard' ? '#2E7D32' : '#9CA3AF' }}>Home</Text>
-        </TouchableOpacity>
+      {/* Soft UI Floating Bottom Navigation Bar */}
+      <View style={styles.floatingBottomNavContainer}>
+        <View style={styles.floatingBottomNav}>
+          {/* 1. Home Tab (Integrated Booking & Dashboard) */}
+          <TouchableOpacity
+            style={[
+              styles.floatingNavTab,
+              mainNavTab === 'dashboard' ? styles.floatingNavTabActive : null,
+            ]}
+            onPress={() => setMainNavTab('dashboard')}
+            activeOpacity={0.85}
+          >
+            <Icon
+              name="home-variant"
+              size={22}
+              color={mainNavTab === 'dashboard' ? '#FFFFFF' : '#8A908B'}
+            />
+            <Text
+              style={[
+                styles.floatingNavText,
+                mainNavTab === 'dashboard' ? styles.floatingNavTextActive : styles.floatingNavTextInactive,
+              ]}
+            >
+              Home
+            </Text>
+          </TouchableOpacity>
 
-        {/* 2. Bookings Tab */}
-        <TouchableOpacity
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => setMainNavTab('booking')}
-        >
-          <Icon name="briefcase-outline" size={24} color={mainNavTab === 'booking' ? '#2E7D32' : '#9CA3AF'} />
-          <Text style={{ fontSize: 11, fontWeight: '700', marginTop: 2, color: mainNavTab === 'booking' ? '#2E7D32' : '#9CA3AF' }}>Bookings</Text>
-        </TouchableOpacity>
+          {/* 2. Active Now Tab (Strictly Matching Live Feed) */}
+          <TouchableOpacity
+            style={[
+              styles.floatingNavTab,
+              mainNavTab === 'home' ? styles.floatingNavTabActive : null,
+            ]}
+            onPress={() => setMainNavTab('home')}
+            activeOpacity={0.85}
+          >
+            <Icon
+              name="lightning-bolt"
+              size={22}
+              color={mainNavTab === 'home' ? '#FFFFFF' : '#8A908B'}
+            />
+            <Text
+              style={[
+                styles.floatingNavText,
+                mainNavTab === 'home' ? styles.floatingNavTextActive : styles.floatingNavTextInactive,
+              ]}
+            >
+              Active Now
+            </Text>
+          </TouchableOpacity>
 
-        {/* 3. Active Now Tab (Replaces Wallet per instructions) */}
-        <TouchableOpacity
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => setMainNavTab('home')}
-        >
-          <Icon name="lightning-bolt" size={24} color={mainNavTab === 'home' ? '#2E7D32' : '#9CA3AF'} />
-          <Text style={{ fontSize: 11, fontWeight: '700', marginTop: 2, color: mainNavTab === 'home' ? '#2E7D32' : '#9CA3AF' }}>Active Now</Text>
-        </TouchableOpacity>
-
-        {/* 4. Settings Tab (Swapped Profile with Settings) */}
-        <TouchableOpacity
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-          onPress={onNavigateToSettings}
-        >
-          <Icon name="cog-outline" size={24} color="#9CA3AF" />
-          <Text style={{ fontSize: 11, fontWeight: '700', marginTop: 2, color: '#9CA3AF' }}>Settings</Text>
-        </TouchableOpacity>
+          {/* 3. Settings Tab */}
+          <TouchableOpacity
+            style={styles.floatingNavTab}
+            onPress={() => {
+              if (onNavigateToSettings) {
+                onNavigateToSettings();
+              }
+            }}
+            activeOpacity={0.85}
+          >
+            <Icon
+              name="cog-outline"
+              size={22}
+              color="#8A908B"
+            />
+            <Text
+              style={[
+                styles.floatingNavText,
+                styles.floatingNavTextInactive,
+              ]}
+            >
+              Settings
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -2140,166 +2828,431 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
-  roleTabContainer: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  roleTabBtn: {
-    flex: 1,
-    height: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    marginHorizontal: 4,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  roleTabBtnActive: {
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-  },
-  roleTabText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  dashboardHeaderTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginVertical: 16,
-  },
-  dashCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  dashCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  dashText: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  dashWhatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    alignSelf: 'flex-start',
-  },
-  dashWhatsappBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  countdownCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-  },
-  timerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  timerText: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  centerPillContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 12,
-  },
-  greenPill: {
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  greenPillText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  noFilterInstructionText: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginVertical: 20,
     paddingHorizontal: 20,
-    lineHeight: 22,
-  },
-  welcomeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  welcomeGreetingText: {
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  welcomeSubtext: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  trustBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginLeft: 8,
-  },
-  trustBadgeText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  quickActionPillsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  quickActionPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    marginHorizontal: 4,
-    // Neumorphic Soft UI Shadow & Elevation
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3E7E3',
     ...Platform.select({
       ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 3, height: 5 },
-        shadowOpacity: 0.22,
-        shadowRadius: 6,
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  profileHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  avatarContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  profileTextWrapper: {
+    flex: 1,
+  },
+  userNameText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  roleTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  roleBadge: {
+    backgroundColor: '#2F9A3C',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 9999,
+  },
+  roleBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  verifiedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 9999,
+  },
+  verifiedTagText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#2F9A3C',
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  personaSwitchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9999,
+    gap: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  personaSwitchText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  sosButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9999,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#D32F2F',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  sosButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  notifIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadDotBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#2F9A3C',
+  },
+  feedContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 110,
+  },
+  bookingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  bookingHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bookingTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bookingTitleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  clearBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8A908B',
+  },
+  routeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  routeInputField: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  routeInputText: {
+    fontSize: 14,
+    color: '#262A27',
+    fontWeight: '600',
+    flex: 1,
+  },
+  routeInputPlaceholder: {
+    fontSize: 13,
+    color: '#8A908B',
+    flex: 1,
+  },
+  routeArrowCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2F9A3C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  primaryPostBtn: {
+    backgroundColor: '#2F9A3C',
+    height: 52,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
       },
       android: {
         elevation: 4,
       },
     }),
+  },
+  primaryPostBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  activeTripBanner: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#2F9A3C',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  liveTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 9999,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  sectionActionText: {
+    fontSize: 13,
+    color: '#2F9A3C',
+    fontWeight: '600',
+  },
+  statsTilesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  statTile: {
+    width: '48.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  statTile3: {
+    width: '31.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  statIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#262A27',
+    marginTop: 2,
+  },
+  statSubText: {
+    fontSize: 11,
+    color: '#8A908B',
+    marginTop: 2,
+  },
+  floatingBottomNavContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'android' ? 16 : 28,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    zIndex: 99,
+  },
+  floatingBottomNav: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    height: 72,
+    width: '100%',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  floatingNavTab: {
+    flex: 1,
+    height: 56,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingNavTabActive: {
+    backgroundColor: '#2F9A3C',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  floatingNavText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  floatingNavTextActive: {
+    color: '#FFFFFF',
+  },
+  floatingNavTextInactive: {
+    color: '#8A908B',
   },
   quickActionPillText: {
     fontSize: 13,
@@ -2592,524 +3545,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    height: 40,
     borderRadius: 10,
-    marginVertical: 16,
   },
   bookingActionBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bottomNavContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-  },
-  bottomNavBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginHorizontal: 4,
-  },
-  bottomNavBtnActive: {
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  fareCardBox: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  submitFormBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 10,
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  routeBadgeTextBook: {
-    color: '#E65100',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  submitFormBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bottomNavText: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  pickerSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    height: 42,
-    borderWidth: 1,
-    borderRadius: 10,
-    marginVertical: 4,
-  },
-  pickerSelectorText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  pickerIcon: {
-    marginRight: 8,
-  },
-  detailInput: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 10,
-    marginVertical: 4,
-    fontSize: 13,
-  },
-  routeDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 8,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginVertical: 12,
-  },
-  switchLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    zIndex: 10,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#E8F5E9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  userName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  userPhone: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    zIndex: 99,
-    elevation: 10,
-  },
-  headerIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    zIndex: 100,
-  },
-  badgeDot: {
-    position: 'absolute',
-    top: 1,
-    right: 1,
-    backgroundColor: '#D32F2F',
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 3,
-  },
-  badgeDotText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  topSegmentContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  topSegmentBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    marginHorizontal: 3,
-  },
-  topSegmentBtnActive: {
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-  },
-  topSegmentText: {
-    fontSize: 12,
-    marginLeft: 5,
-  },
-  noFilterBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  noFilterBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 12,
-    marginRight: 6,
-  },
-  tabActiveOffer: {
-    backgroundColor: '#43A047',
-  },
-  tabActiveBook: {
-    backgroundColor: '#E65100',
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4B5563',
-    marginLeft: 6,
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-  },
-  filterCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  filterTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#4B5563',
-    marginBottom: 6,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterInput: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    height: 38,
-  },
-  filterValueText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  filterPlaceholder: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  arrowIcon: {
-    marginHorizontal: 8,
-  },
-  clearFilterBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 6,
-  },
-  clearFilterText: {
-    fontSize: 11,
-    color: '#E65100',
-    fontWeight: '700',
-  },
-  actionBannerContainer: {
-    paddingHorizontal: 16,
-    marginTop: 12,
-  },
-  offerRideBtn: {
-    backgroundColor: '#43A047',
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bookRideBtn: {
-    backgroundColor: '#E65100',
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  viewScopeContainer: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 10,
-    padding: 3,
-  },
-  scopeBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  scopeBtnActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  scopeBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  scopeBtnTextActive: {
-    color: '#111827',
-    fontWeight: '700',
-  },
-  myPostBadge: {
-    backgroundColor: '#1E88E5',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  myPostBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  editBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1976D2',
-    borderRadius: 8,
-    paddingVertical: 8,
-    marginRight: 6,
-  },
-  editBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 4,
-  },
-  deleteBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#D32F2F',
-    borderRadius: 8,
-    paddingVertical: 8,
-  },
-  deleteBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 4,
-  },
-  activeSectionBanner: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 12,
-  },
-  activeSectionBannerText: {
-    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  modalActionBtn: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginBottom: 10,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 2, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  modalActionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 10,
-  },
-  neumorphicPostCard: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 3, height: 5 },
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  feedContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 4,
-  },
-  sectionHeader: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 10,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginTop: 4,
   },
   postCard: {
     backgroundColor: '#FFFFFF',

@@ -22,9 +22,10 @@ import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getDriverProfile, getUserProfile } from '../services/storage';
 import { fetchRoutes, getUniqueLocations, matchRoute } from '../services/sheetService';
-import { encodeTripToDeepLink, generateWhatsAppMessage, openWhatsApp } from '../services/deepLinkService';
 import { saveOfferRidePostLocal } from '../services/dbService';
-import { DriverProfile, TripData, RouteConfig, OfferRidePost } from '../types';
+import { checkAndNotifyMatchingPost } from '../services/notificationService';
+import { openWhatsApp } from '../services/deepLinkService';
+import { DriverProfile, RouteConfig, OfferRidePost } from '../types';
 
 interface CreateRideScreenProps {
   initialFrom?: string;
@@ -120,19 +121,10 @@ export default function CreateRideScreen({
     setActivePicker(null);
   };
 
-  const resetForm = () => {
-    setSelectedOrigin('');
-    setOriginDetail('');
-    setSelectedDestination('');
-    setDestinationDetail('');
-    setMatchedRouteConfig(null);
-    setIsAC(driverProfile?.defaultACStatus || false);
-  };
-
   if (isLoadingProfile || loadingRoutes) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#43A047" />
+        <ActivityIndicator size="large" color="#2F9A3C" />
         <Text style={styles.loadingText}>Fetching configured routes...</Text>
       </View>
     );
@@ -141,25 +133,26 @@ export default function CreateRideScreen({
   if (!driverProfile) {
     return (
       <SafeAreaView style={styles.safeArea}>
-      {/* Top Header */}
-      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Icon name="arrow-left" size={24} color={theme.primary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.textPrimary, fontSize: 18, fontWeight: '800' }, getTextStyle()]}>
-          {isUrdu ? 'سفر کی پیشکش تخلیق کریں' : 'Create Ride Offer'}
-        </Text>
-        <TouchableOpacity style={{ padding: 4 }}>
-          <Icon name="help-circle" size={22} color={theme.primary} />
-        </TouchableOpacity>
-      </View>
+        <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+            <Icon name="arrow-left" size={20} color="#262A27" />
+          </TouchableOpacity>
+          <Text style={[styles.title, getTextStyle()]}>
+            {isUrdu ? 'سفر کی پیشکش تخلیق کریں' : 'Create Ride Offer'}
+          </Text>
+          <View style={{ width: 44 }} />
+        </View>
+
         <View style={styles.emptyContainer}>
-          <Icon name="car-off" size={80} color="#9CA3AF" />
+          <View style={styles.emptyIconContainer}>
+            <Icon name="car-off" size={32} color="#8A908B" />
+          </View>
           <Text style={styles.emptyTitle}>No Vehicle Profile</Text>
           <Text style={styles.emptyText}>
             You must configure your vehicle make, model, and WhatsApp number before you can offer rides.
           </Text>
-          <TouchableOpacity style={styles.emptyButton} onPress={onNavigateToProfile}>
+          <TouchableOpacity style={styles.emptyButton} onPress={onNavigateToProfile} activeOpacity={0.85}>
             <Text style={styles.emptyButtonText}>Setup Vehicle Profile</Text>
           </TouchableOpacity>
         </View>
@@ -167,50 +160,7 @@ export default function CreateRideScreen({
     );
   }
 
-  const finalOriginText = selectedOrigin + (originDetail.trim() ? ` (${originDetail.trim()})` : '');
-  const finalDestinationText = selectedDestination + (destinationDetail.trim() ? ` (${destinationDetail.trim()})` : '');
-
-  // Calculate fare details
-  const distanceKm = matchedRouteConfig ? matchedRouteConfig.distanceKm : 0;
   const calculatedFare = matchedRouteConfig ? (isAC ? matchedRouteConfig.acFare : matchedRouteConfig.nonAcFare) : 0;
-
-  // Generate trip object
-  const getTripObject = (): TripData | null => {
-    if (!selectedOrigin || !selectedDestination || !matchedRouteConfig) return null;
-    return {
-      originAddress: finalOriginText,
-      originPlaceId: 'sheet-loc-' + selectedOrigin.toLowerCase(),
-      originLat: 0, // No coordinates needed in sheets-only route version
-      originLng: 0,
-      destinationAddress: finalDestinationText,
-      destinationPlaceId: 'sheet-loc-' + selectedDestination.toLowerCase(),
-      destinationLat: 0,
-      destinationLng: 0,
-      distanceKm,
-      fare: calculatedFare,
-      isAC,
-      driverPhone: driverProfile.phoneNumber,
-      driverVehicleName: driverProfile.vehicleName,
-      driverVehicleModel: driverProfile.vehicleModel,
-      timestamp: Date.now(),
-    };
-  };
-
-  const tripObj = getTripObject();
-  const generatedDeepLink = tripObj ? encodeTripToDeepLink(tripObj) : '';
-  const generatedMessage = tripObj ? generateWhatsAppMessage(tripObj, generatedDeepLink) : '';
-
-  const handleCopyLink = () => {
-    if (!generatedDeepLink) return;
-    Clipboard.setString(generatedDeepLink);
-    Alert.alert('Link Copied', 'The carpool ride deep link has been copied to your clipboard.');
-  };
-
-  const handleCopyMessage = () => {
-    if (!generatedMessage) return;
-    Clipboard.setString(generatedMessage);
-    Alert.alert('Message Copied', 'WhatsApp message text copied to clipboard.');
-  };
 
   const handlePostRideOffer = async () => {
     if (!selectedOrigin || !selectedDestination || !driverProfile || !matchedRouteConfig) {
@@ -240,7 +190,17 @@ export default function CreateRideScreen({
       };
 
       await saveOfferRidePostLocal(newPost);
-      Alert.alert('Ride Offer Posted!', 'Your ride offer is now live. Other users can view and request seats.', [
+      
+      // Notify passengers looking for this route
+      await checkAndNotifyMatchingPost({
+        fromCity: selectedOrigin,
+        toCity: selectedDestination,
+        departureTime: departureTime.trim() || '14:00 to 15:00',
+        postedByRole: 'driver',
+        posterName: driverProfile.driverName || userProf?.fullName || 'Driver',
+      });
+
+      Alert.alert('Ride Offer Posted!', 'Your ride offer is now live for passengers traveling on this route.', [
         {
           text: 'OK',
           onPress: () => onBack(),
@@ -251,10 +211,16 @@ export default function CreateRideScreen({
     }
   };
 
+  const handleCopyMessage = () => {
+    const msg = `🚗 *Raahi Available!*\n📍 *From:* ${selectedOrigin}\n🏁 *To:* ${selectedDestination}\n💰 *Fare:* Rs. ${calculatedFare.toFixed(2)}\n❄️ *Tier:* ${isAC ? 'AC Premium' : 'Non-AC'}\n⏰ *Time:* ${departureTime}\n👥 *Seats:* ${seatsAvailable}`;
+    Clipboard.setString(msg);
+    Alert.alert('Message Copied', 'WhatsApp message text copied to clipboard.');
+  };
+
   const handleShareWhatsApp = async () => {
-    if (!tripObj || !generatedMessage) return;
+    const msg = `🚗 *Raahi Available!*\n📍 *From:* ${selectedOrigin}\n🏁 *To:* ${selectedDestination}\n💰 *Fare:* Rs. ${calculatedFare.toFixed(2)}\n❄️ *Tier:* ${isAC ? 'AC Premium' : 'Non-AC'}\n⏰ *Time:* ${departureTime}\n👥 *Seats:* ${seatsAvailable}`;
     try {
-      await openWhatsApp(driverProfile.phoneNumber, generatedMessage);
+      await openWhatsApp(driverProfile.phoneNumber, msg);
     } catch (error: any) {
       Alert.alert('Share Failed', error.message || 'Unable to open WhatsApp.');
     }
@@ -265,40 +231,41 @@ export default function CreateRideScreen({
   );
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
-      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color={theme.primary} />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+      {/* Soft UI Elevated App Bar Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color="#262A27" />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.textPrimary, fontSize: 18, fontWeight: '800' }, getTextStyle()]}>
+        <Text style={[styles.title, getTextStyle()]}>
           {isUrdu ? 'سفر کی پیشکش تخلیق کریں' : 'Create Ride Offer'}
         </Text>
-        <TouchableOpacity style={{ padding: 4 }}>
-          <Icon name="help-circle" size={22} color={theme.primary} />
-        </TouchableOpacity>
+        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {/* Route Selectors Card */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-          <Text style={[styles.cardTitle, { color: theme.primary }, getTextStyle()]}>{isUrdu ? 'راستہ اور مقامات' : 'Route & Locations'}</Text>
+        <View style={styles.card}>
+          <Text style={[styles.cardTitle, getTextStyle()]}>
+            {isUrdu ? 'راستہ اور مقامات' : 'Route & Locations'}
+          </Text>
 
           <View style={styles.routeBox}>
             {/* Origin Picker */}
-            <Text style={[styles.inputLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('fromCity')}</Text>
-            <TouchableOpacity style={[styles.pickerSelector, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => openPicker('origin')}>
-              <Icon name="map-marker" size={20} color={theme.primary} style={styles.pickerIcon} />
-              <Text style={[styles.pickerSelectorText, !selectedOrigin ? { color: theme.textMuted } : { color: theme.textPrimary }, getTextStyle()]}>
+            <Text style={styles.inputLabel}>{t('fromCity')}</Text>
+            <TouchableOpacity style={styles.pickerSelector} onPress={() => openPicker('origin')} activeOpacity={0.85}>
+              <Icon name="map-marker" size={18} color="#2F9A3C" style={styles.pickerIcon} />
+              <Text style={[styles.pickerSelectorText, !selectedOrigin ? styles.pickerPlaceholder : null]}>
                 {selectedOrigin || t('selectDepartureCity')}
               </Text>
-              <Icon name="chevron-down" size={20} color={theme.textMuted} />
+              <Icon name="chevron-down" size={18} color="#8A908B" />
             </TouchableOpacity>
 
             <TextInput
               style={styles.detailInput}
               placeholder="Landmark/Pickup details (e.g. Metro Pole, Gate 3)"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#8A908B"
               value={originDetail}
               onChangeText={setOriginDetail}
             />
@@ -306,19 +273,19 @@ export default function CreateRideScreen({
             <View style={styles.routeDivider} />
 
             {/* Destination Picker */}
-            <Text style={styles.inputLabel}>Destination Point</Text>
-            <TouchableOpacity style={styles.pickerSelector} onPress={() => openPicker('destination')}>
-              <Icon name="flag-checkered" size={20} color="#E65100" style={styles.pickerIcon} />
+            <Text style={styles.inputLabel}>{t('toCity')}</Text>
+            <TouchableOpacity style={styles.pickerSelector} onPress={() => openPicker('destination')} activeOpacity={0.85}>
+              <Icon name="flag-checkered" size={18} color="#2F9A3C" style={styles.pickerIcon} />
               <Text style={[styles.pickerSelectorText, !selectedDestination ? styles.pickerPlaceholder : null]}>
                 {selectedDestination || 'Choose Destination Location...'}
               </Text>
-              <Icon name="chevron-down" size={20} color="#6B7280" />
+              <Icon name="chevron-down" size={18} color="#8A908B" />
             </TouchableOpacity>
 
             <TextInput
               style={styles.detailInput}
               placeholder="Dropoff details (e.g. Block 5, next to mall)"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#8A908B"
               value={destinationDetail}
               onChangeText={setDestinationDetail}
             />
@@ -326,31 +293,31 @@ export default function CreateRideScreen({
 
           {/* AC Toggle */}
           <View style={styles.switchContainer}>
-            <View>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.switchLabel}>Air Conditioning (AC)</Text>
               <Text style={styles.switchDesc}>Enable AC premium tier pricing</Text>
             </View>
             <View style={styles.switchControl}>
-              <View style={[styles.tierBadge, isAC ? styles.badgeAC : styles.badgeNonAC]}>
-                <Icon name={isAC ? 'snowflake' : 'fan'} size={12} color={isAC ? '#43A047' : '#E65100'} />
-                <Text style={[styles.tierBadgeText, isAC ? styles.badgeTextAC : styles.badgeTextNonAC]}>
+              <View style={styles.tierBadge}>
+                <Icon name={isAC ? 'snowflake' : 'fan'} size={14} color="#2F9A3C" />
+                <Text style={styles.tierBadgeText}>
                   {isAC ? 'AC' : 'Non-AC'}
                 </Text>
               </View>
               <Switch
                 value={isAC}
                 onValueChange={setIsAC}
-                trackColor={{ false: '#E5E7EB', true: '#A5D6A7' }}
-                thumbColor={isAC ? '#43A047' : '#F3F4F6'}
+                trackColor={{ false: '#E9ECE9', true: '#2F9A3C' }}
+                thumbColor="#FFFFFF"
               />
             </View>
           </View>
         </View>
 
-        {/* Selected Route Match Verification */}
+        {/* Selected Route Match Warning */}
         {selectedOrigin && selectedDestination && !matchedRouteConfig && (
           <View style={styles.warningBox}>
-            <Icon name="alert-circle-outline" size={22} color="#EF4444" />
+            <Icon name="alert-circle-outline" size={20} color="#262A27" />
             <Text style={styles.warningText}>
               No configured route found from {selectedOrigin} to {selectedDestination}. Please check your combinations.
             </Text>
@@ -363,57 +330,57 @@ export default function CreateRideScreen({
             <Text style={styles.cardTitle}>Fare Summary (Per Seat)</Text>
             
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: '#6B7280' }}>Tier</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#2E7D32' }}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
+              <Text style={{ fontSize: 13, color: '#8A908B' }}>Tier</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#2F9A3C' }}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={{ fontSize: 13, color: '#6B7280' }}>Fare</Text>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: '#2E7D32' }}>Rs. {calculatedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+              <Text style={{ fontSize: 13, color: '#8A908B' }}>Fare</Text>
+              <Text style={{ fontSize: 24, fontWeight: '600', color: '#2F9A3C' }}>Rs. {calculatedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
             </View>
 
             {/* Departure Time Input */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 12 }}>
-              <Icon name="clock-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
-              <Text style={{ fontSize: 12, color: '#374151', marginRight: 8, fontWeight: '600' }}>Departure Time</Text>
+            <View style={styles.inputRowContainer}>
+              <Icon name="clock-outline" size={18} color="#8A908B" style={{ marginRight: 8 }} />
+              <Text style={styles.inputRowLabel}>Departure Time</Text>
               <TextInput
-                style={{ flex: 1, fontSize: 13, color: '#111827', textAlign: 'right', fontWeight: '700' }}
+                style={styles.inputRowField}
                 value={departureTime}
                 onChangeText={setDepartureTime}
                 placeholder="14:00 to 15:00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#8A908B"
               />
             </View>
 
             {/* Seats Count Input */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 16 }}>
-              <Icon name="account-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
-              <Text style={{ fontSize: 12, color: '#374151', marginRight: 8, fontWeight: '600' }}>Available Seats</Text>
+            <View style={styles.inputRowContainer}>
+              <Icon name="account-outline" size={18} color="#8A908B" style={{ marginRight: 8 }} />
+              <Text style={styles.inputRowLabel}>Available Seats</Text>
               <TextInput
-                style={{ flex: 1, fontSize: 13, color: '#111827', textAlign: 'right', fontWeight: '700' }}
+                style={styles.inputRowField}
                 keyboardType="numeric"
                 value={seatsAvailable}
                 onChangeText={setSeatsAvailable}
                 placeholder="3 Seats"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#8A908B"
               />
             </View>
 
             {/* Primary Post Button */}
-            <TouchableOpacity style={{ backgroundColor: '#2E7D32', borderRadius: 12, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }} onPress={handlePostRideOffer}>
-              <Icon name="check-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Post Ride Offer</Text>
+            <TouchableOpacity style={styles.primaryPostBtn} onPress={handlePostRideOffer} activeOpacity={0.85}>
+              <Icon name="check-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryPostBtnText}>Post Ride Offer</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Message Preview and Actions */}
-        {tripObj !== null && (
+        {matchedRouteConfig && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Message Preview</Text>
             
-            <View style={{ backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 14 }}>
-              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+            <View style={styles.previewBox}>
+              <Text style={styles.previewText}>
                 🚗 *Raahi Available!*{'\n'}
                 📍 *From:* {selectedOrigin}{'\n'}
                 🏁 *To:* {selectedDestination}{'\n'}
@@ -424,21 +391,23 @@ export default function CreateRideScreen({
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={styles.copyButtonsRow}>
               <TouchableOpacity
-                style={{ flex: 1, height: 42, borderWidth: 1, borderColor: '#2E7D32', borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+                style={styles.secondaryActionBtn}
                 onPress={handleCopyMessage}
+                activeOpacity={0.85}
               >
-                <Icon name="content-copy" size={16} color="#2E7D32" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#2E7D32', fontSize: 13, fontWeight: '700' }}>Copy Message</Text>
+                <Icon name="content-copy" size={16} color="#262A27" style={{ marginRight: 6 }} />
+                <Text style={styles.secondaryActionBtnText}>Copy Message</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{ flex: 1, height: 42, borderWidth: 1, borderColor: '#25D366', borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}
+                style={styles.secondaryActionBtn}
                 onPress={handleShareWhatsApp}
+                activeOpacity={0.85}
               >
-                <Icon name="whatsapp" size={18} color="#25D366" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#25D366', fontSize: 13, fontWeight: '700' }}>Share on WhatsApp</Text>
+                <Icon name="whatsapp" size={18} color="#2F9A3C" style={{ marginRight: 6 }} />
+                <Text style={styles.secondaryActionBtnText}>Share on WhatsApp</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -458,17 +427,17 @@ export default function CreateRideScreen({
                 <Text style={styles.modalTitle}>
                   Select {activePicker === 'origin' ? 'Origin' : 'Destination'}
                 </Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Icon name="close" size={24} color="#111827" />
+                <TouchableOpacity onPress={() => setModalVisible(false)} activeOpacity={0.8}>
+                  <Icon name="close" size={22} color="#262A27" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.searchBarContainer}>
-                <Icon name="magnify" size={20} color="#9CA3AF" />
+                <Icon name="magnify" size={20} color="#8A908B" />
                 <TextInput
                   style={styles.searchBar}
                   placeholder="Search location..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#8A908B"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
@@ -478,8 +447,8 @@ export default function CreateRideScreen({
                 data={filteredLocations}
                 keyExtractor={(item) => item}
                 renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.locationItem} onPress={() => handleSelectLocation(item)}>
-                    <Icon name="map-marker-outline" size={20} color="#6B7280" />
+                  <TouchableOpacity style={styles.locationItem} onPress={() => handleSelectLocation(item)} activeOpacity={0.7}>
+                    <Icon name="map-marker-outline" size={18} color="#2F9A3C" />
                     <Text style={styles.locationItemText}>{item}</Text>
                   </TouchableOpacity>
                 )}
@@ -500,314 +469,347 @@ export default function CreateRideScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
+    backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F3F2',
   },
   loadingText: {
-    color: '#6B7280',
+    color: '#8A908B',
     marginTop: 12,
-    fontSize: 15,
+    fontSize: 14,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#F8F9FA',
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3E7E3',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
   },
   container: {
     paddingHorizontal: 20,
+    paddingVertical: 16,
     paddingBottom: 40,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   cardTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#262A27',
     marginBottom: 12,
   },
   routeBox: {
-    marginBottom: 6,
+    marginBottom: 8,
   },
   inputLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#374151',
-    marginBottom: 4,
-    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 6,
+    marginTop: 8,
   },
   pickerSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAF8',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    height: 42,
+    borderColor: '#E3E7E3',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 52,
+    marginBottom: 10,
   },
   pickerIcon: {
     marginRight: 10,
   },
   pickerSelectorText: {
     flex: 1,
-    fontSize: 13,
-    color: '#111827',
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#262A27',
   },
   pickerPlaceholder: {
-    color: '#9CA3AF',
+    color: '#8A908B',
   },
   detailInput: {
-    backgroundColor: '#F8FAF8',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    backgroundColor: '#F2F3F2',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 13,
-    color: '#111827',
-    marginBottom: 12,
-    height: 40,
+    color: '#262A27',
+    marginBottom: 8,
   },
   routeDivider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 4,
+    backgroundColor: '#E3E7E3',
+    marginVertical: 8,
   },
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 16,
+    marginTop: 8,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E3E7E3',
   },
   switchLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#262A27',
   },
   switchDesc: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#8A908B',
     marginTop: 2,
   },
   switchControl: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   tierBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20,
+    borderRadius: 9999,
     paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginRight: 8,
-  },
-  badgeAC: {
-    backgroundColor: '#E8F5E9',
-  },
-  badgeNonAC: {
-    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(47, 154, 60, 0.10)',
   },
   tierBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#2F9A3C',
     marginLeft: 4,
-  },
-  badgeTextAC: {
-    color: '#2E7D32',
-  },
-  badgeTextNonAC: {
-    color: '#E65100',
   },
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
-    borderRadius: 12,
-    padding: 16,
+    borderColor: '#E3E7E3',
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 16,
   },
   warningText: {
-    flex: 1,
-    color: '#B91C1C',
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#8A908B',
     marginLeft: 10,
-    lineHeight: 18,
+    flex: 1,
+    lineHeight: 16,
   },
-  summaryRow: {
+  inputRowContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  totalValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#43A047',
-  },
-  previewBox: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 12,
+    alignItems: 'center',
+    backgroundColor: '#F2F3F2',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 52,
     marginBottom: 12,
   },
+  inputRowLabel: {
+    fontSize: 13,
+    color: '#262A27',
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  inputRowField: {
+    flex: 1,
+    fontSize: 14,
+    color: '#262A27',
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  primaryPostBtn: {
+    backgroundColor: '#2F9A3C',
+    borderRadius: 20,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  primaryPostBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  previewBox: {
+    backgroundColor: '#F2F3F2',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+  },
   previewText: {
-    fontFamily: 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 12,
-    color: '#374151',
+    color: '#262A27',
     lineHeight: 18,
   },
   copyButtonsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    gap: 10,
   },
-  copyButton: {
-    flex: 0.48,
+  secondaryActionBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7E3',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#43A047',
-    borderRadius: 12,
-    paddingVertical: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  copyButtonText: {
-    color: '#43A047',
+  secondaryActionBtnText: {
+    color: '#262A27',
     fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  whatsappButton: {
-    backgroundColor: '#43A047',
-    borderRadius: 14,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  whatsappButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  resetButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#EF5350',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  resetButtonText: {
-    color: '#EF5350',
-    fontSize: 14,
     fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    padding: 24,
+  },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#262A27',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 16,
-    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#262A27',
+    marginBottom: 6,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 13,
+    color: '#8A908B',
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: 18,
+    marginBottom: 20,
   },
   emptyButton: {
-    backgroundColor: '#43A047',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#2F9A3C',
+    borderRadius: 20,
+    height: 52,
     paddingHorizontal: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#2F9A3C',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   emptyButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(38, 42, 39, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     height: '60%',
     padding: 20,
   },
@@ -815,68 +817,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#262A27',
   },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAF8',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
+    backgroundColor: '#F2F3F2',
+    borderRadius: 16,
+    paddingHorizontal: 14,
     marginBottom: 12,
-    height: 40,
+    height: 52,
   },
   searchBar: {
     flex: 1,
-    height: 40,
-    color: '#111827',
-    fontSize: 13,
-    marginLeft: 6,
+    height: 52,
+    color: '#262A27',
+    fontSize: 14,
+    marginLeft: 8,
   },
   locationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
+    borderBottomColor: '#F2F3F2',
   },
   locationItemText: {
     fontSize: 14,
-    color: '#111827',
+    color: '#262A27',
     marginLeft: 10,
   },
   emptyList: {
-    paddingVertical: 30,
+    paddingVertical: 24,
     alignItems: 'center',
   },
   emptyListText: {
-    color: '#9CA3AF',
-    fontSize: 14,
-  },
-  postRideButton: {
-    backgroundColor: '#43A047',
-    borderRadius: 14,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    shadowColor: '#43A047',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  postRideButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#8A908B',
+    fontSize: 13,
   },
 });
