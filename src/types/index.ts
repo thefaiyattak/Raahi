@@ -17,24 +17,51 @@ export interface FareRates {
 }
 
 export interface TripData {
-  originPlaceId: string;
+  id?: string;
+  driverName?: string;
+  originPlaceId?: string;
   originAddress: string;
   originLat: number;
   originLng: number;
-  destinationPlaceId: string;
+  destinationPlaceId?: string;
   destinationAddress: string;
   destinationLat: number;
   destinationLng: number;
-  distanceKm: number;
-  fare: number;
-  isAC: boolean;
+  distanceKm?: number;
+  fare?: number;
+  price?: string | number;
+  seats?: number;
+  isAC?: boolean;
   driverPhone: string;
-  driverVehicleName: string;
-  driverVehicleModel: string;
+  driverVehicleName?: string;
+  driverVehicleModel?: string;
   timestamp: number;
 }
 
+export type VehicleCategory = 'below_1000cc' | 'above_1000cc';
+export type ACTier = 'ac' | 'non_ac';
+export type RouteHighwayType = 'gt_road' | 'cpec';
+
+export interface MileageConfig {
+  below_1000cc_non_ac: number; // 15 KM/L (Cars Below 1000 CC without AC)
+  below_1000cc_ac: number;     // 13.5 KM/L (Cars Below 1000 CC with AC)
+  above_1000cc_non_ac: number; // 14.5 KM/L (Cars 1000 CC and above without AC)
+  above_1000cc_ac: number;     // 13 KM/L (Cars 1000 CC and above with AC)
+}
+
+export interface FareFormulaConfig {
+  fuelPricePerLiter: number; // e.g. 344 Rs
+  passengerCapacity: number; // e.g. 4
+  tollCharges: {
+    gt_road: number; // 200 Rs
+    cpec: number;    // 360 Rs
+  };
+  mileage: MileageConfig;
+  lastUpdated?: number;
+}
+
 export interface AdminFareConfig {
+  formula: FareFormulaConfig;
   rates: {
     ac: { base: number; perKm: number; updatedAt: number; };
     nonAc: { base: number; perKm: number; updatedAt: number; };

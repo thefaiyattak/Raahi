@@ -19,6 +19,9 @@ import {
 import Icon from '../components/AppIcon';
 import RatingsModal from '../components/RatingsModal';
 import NeumorphicButton from '../components/NeumorphicButton';
+import ThemedAlertModal, { ThemedAlertProps } from '../components/ThemedAlertModal';
+import MapLocationPickerModal from '../components/MapLocationPickerModal';
+import { showThemedAlert } from '../context/AlertContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { UserProfile, OfferRidePost, BookRidePost } from '../types';
@@ -45,6 +48,7 @@ interface HomeScreenProps {
   onNavigateToProfile: () => void;
   onNavigateToSettings: () => void;
   onNavigateToNotifications: () => void;
+  onNavigateToTripViewer?: (trip: any) => void;
   onSignOut: () => void;
   onToggleProfileMode?: (newMode: 'passenger' | 'driver') => void;
 }
@@ -56,6 +60,7 @@ export default function HomeScreen({
   onNavigateToProfile,
   onNavigateToSettings,
   onNavigateToNotifications,
+  onNavigateToTripViewer,
   onSignOut,
   onToggleProfileMode,
 }: HomeScreenProps) {
@@ -105,6 +110,20 @@ export default function HomeScreen({
   const [showEarningsModal, setShowEarningsModal] = useState(false);
   const [showPersonaSwitchModal, setShowPersonaSwitchModal] = useState(false);
 
+  // Themed Alert Modal State
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps>({
+    visible: false,
+    title: '',
+  });
+
+  const showAlert = (config: Omit<ThemedAlertProps, 'visible'>) => {
+    setAlertConfig({
+      ...config,
+      visible: true,
+      onClose: () => setAlertConfig((prev) => ({ ...prev, visible: false })),
+    });
+  };
+
   // Earnings Date Filter States
   const [earningsFilterMode, setEarningsFilterMode] = useState<'monthly' | 'custom'>('monthly');
   const [selectedMonth, setSelectedMonth] = useState('July 2026');
@@ -129,11 +148,19 @@ export default function HomeScreen({
 
   const handleSaveNewRoute = () => {
     if (!newRouteFrom || !newRouteTo) {
-      Alert.alert('Validation Error', 'Please select both From and To cities.');
+      showAlert({
+        title: 'Validation Error',
+        message: 'Please select both From and To cities.',
+        type: 'warning',
+      });
       return;
     }
     if (newRouteFrom === newRouteTo) {
-      Alert.alert('Validation Error', 'From and To cities cannot be the same.');
+      showAlert({
+        title: 'Validation Error',
+        message: 'From and To cities cannot be the same.',
+        type: 'warning',
+      });
       return;
     }
     const newRoute = {
@@ -149,7 +176,12 @@ export default function HomeScreen({
     setNewRouteFrom('');
     setNewRouteTo('');
     setShowAddRouteModal(false);
-    Alert.alert('Success', `Saved route added to your ${subRoleTab === 'passenger' ? 'Passenger' : 'Driver'} quick routes!`);
+    showAlert({
+      title: 'Success',
+      message: `Saved route added to your ${subRoleTab === 'passenger' ? 'Passenger' : 'Driver'} quick routes!`,
+      type: 'success',
+      iconName: 'routes',
+    });
   };
 
   // Book Ride Form State
@@ -379,11 +411,20 @@ export default function HomeScreen({
       });
 
       setShowBookFormModal(false);
-      Alert.alert('Success', 'Your ride request has been posted! Matching drivers will be notified.');
+      showAlert({
+        title: 'Ride Request Posted!',
+        message: 'Your ride request has been posted! Matching drivers will be notified.',
+        type: 'success',
+        iconName: 'check-decagram',
+      });
       fetchPosts();
       fetchUnreadNotifications();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to create request.');
+      showAlert({
+        title: 'Error',
+        message: e.message || 'Failed to create request.',
+        type: 'error',
+      });
     }
   };
 
@@ -408,25 +449,39 @@ export default function HomeScreen({
       };
       await updateOfferRidePostLocal(updated);
       setEditingOfferPost(null);
-      Alert.alert('Updated', 'Your ride offer has been updated.');
+      showAlert({
+        title: 'Offer Updated',
+        message: 'Your ride offer has been updated successfully.',
+        type: 'success',
+      });
       fetchPosts();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update post.');
+      showAlert({
+        title: 'Error',
+        message: e.message || 'Failed to update post.',
+        type: 'error',
+      });
     }
   };
 
   const handleDeleteOffer = (postId: string) => {
-    Alert.alert('Delete Ride Offer', 'Are you sure you want to delete this ride offer?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteOfferRidePostLocal(postId);
-          fetchPosts();
+    showAlert({
+      title: 'Delete Ride Offer',
+      message: 'Are you sure you want to delete this ride offer?',
+      type: 'warning',
+      iconName: 'trash-can-outline',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteOfferRidePostLocal(postId);
+            fetchPosts();
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   const handleStartEditBook = (post: BookRidePost) => {
@@ -449,25 +504,39 @@ export default function HomeScreen({
       };
       await updateBookRidePostLocal(updated);
       setEditingBookPost(null);
-      Alert.alert('Updated', 'Your seat request has been updated.');
+      showAlert({
+        title: 'Request Updated',
+        message: 'Your seat request has been updated successfully.',
+        type: 'success',
+      });
       fetchPosts();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update request.');
+      showAlert({
+        title: 'Error',
+        message: e.message || 'Failed to update request.',
+        type: 'error',
+      });
     }
   };
 
   const handleDeleteBook = (postId: string) => {
-    Alert.alert('Delete Request', 'Are you sure you want to delete this seat request?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteBookRidePostLocal(postId);
-          fetchPosts();
+    showAlert({
+      title: 'Delete Request',
+      message: 'Are you sure you want to delete this seat request?',
+      type: 'warning',
+      iconName: 'trash-can-outline',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteBookRidePostLocal(postId);
+            fetchPosts();
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   const handleOpenWhatsApp = (phone: string, text?: string) => {
@@ -479,7 +548,12 @@ export default function HomeScreen({
       text || 'Hi! I saw your post on Raahi.'
     )}`;
     Linking.openURL(url).catch(() => {
-      Alert.alert('WhatsApp Error', 'WhatsApp is not installed on this device.');
+      showAlert({
+        title: 'WhatsApp Error',
+        message: 'WhatsApp is not installed on this device.',
+        type: 'warning',
+        iconName: 'whatsapp',
+      });
     });
   };
 
@@ -487,21 +561,23 @@ export default function HomeScreen({
     try {
       const newRequest = {
         id: 'req_' + Date.now(),
-        ridePostId: post.id,
-        passengerUid: userProfile.uid,
-        passengerName: userProfile.fullName,
-        passengerPhone: userProfile.phoneNumber,
+        rideId: post.id,
+        passengerId: userProfile?.uid || 'guest',
+        passengerName: userProfile?.fullName || 'Passenger',
+        passengerPhone: userProfile?.phone || '',
         seatsRequested: 1,
         status: 'pending' as const,
         createdAt: Date.now(),
       };
       await saveBookingRequestLocal(newRequest);
-      Alert.alert(
+      showThemedAlert(
         'Seat Request Sent',
-        `A seat request has been sent to ${post.driverName}. You will receive confirmation once accepted.`
+        `A seat request has been sent to ${post.driverName}. You will receive confirmation once accepted.`,
+        undefined,
+        { type: 'success', iconName: 'routes', autoDismissMs: 4000 }
       );
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to send seat request.');
+      showThemedAlert('Error', e.message || 'Failed to send seat request.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
     }
   };
 
@@ -898,8 +974,29 @@ export default function HomeScreen({
             </View>
 
             {subRoleTab === 'passenger' ? (
-              /* Recent Completed Trip for PASSENGER */
-              <View style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}>
+              /* Recent Completed Trip for PASSENGER - Click to view on OSM Live Map */
+              <TouchableOpacity
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
+                onPress={() => {
+                  if (onNavigateToTripViewer) {
+                    onNavigateToTripViewer({
+                      id: 'trip_isb_mul_1',
+                      driverName: 'Usman Khan',
+                      driverPhone: '03449793574',
+                      originAddress: 'Islamabad, Zero Point',
+                      destinationAddress: 'Multan, Cantt Chowk',
+                      originLat: 33.6844,
+                      originLng: 73.0479,
+                      destinationLat: 30.1575,
+                      destinationLng: 71.5249,
+                      seats: 3,
+                      price: 'Rs. 2,200',
+                      timestamp: Date.now() - 3600000 * 24 * 40,
+                    });
+                  }
+                }}
+                activeOpacity={0.8}
+              >
                 <Image
                   source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' }}
                   style={{ width: 42, height: 42, borderRadius: 21, marginRight: 10 }}
@@ -908,16 +1005,37 @@ export default function HomeScreen({
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Islamabad ➔ Multan</Text>
                     <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Completed</Text>
+                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>🗺️ View Map</Text>
                     </View>
                   </View>
                   <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Driver: Usman Khan • Fare: Rs. 2,200</Text>
-                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>22 Jul 2026 • 01:30 PM</Text>
+                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>22 Jul 2026 • 01:30 PM (Tap to view route)</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ) : (
-              /* Recent Completed Trip for DRIVER */
-              <View style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}>
+              /* Recent Completed Trip for DRIVER - Click to view on OSM Live Map */
+              <TouchableOpacity
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
+                onPress={() => {
+                  if (onNavigateToTripViewer) {
+                    onNavigateToTripViewer({
+                      id: 'trip_lhe_isb_1',
+                      driverName: userProfile?.fullName || 'Faisal Hayat',
+                      driverPhone: userProfile?.phone || '03449793574',
+                      originAddress: 'Lahore, Thokar Niaz Baig',
+                      destinationAddress: 'Islamabad, Faizabad',
+                      originLat: 31.5204,
+                      originLng: 74.3587,
+                      destinationLat: 33.6844,
+                      destinationLng: 73.0479,
+                      seats: 4,
+                      price: 'Rs. 1,800',
+                      timestamp: Date.now() - 3600000 * 24 * 44,
+                    });
+                  }
+                }}
+                activeOpacity={0.8}
+              >
                 <Image
                   source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' }}
                   style={{ width: 42, height: 42, borderRadius: 21, marginRight: 10 }}
@@ -926,13 +1044,13 @@ export default function HomeScreen({
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Lahore ➔ Islamabad</Text>
                     <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Completed</Text>
+                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>🗺️ View Map</Text>
                     </View>
                   </View>
                   <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Passenger: Ali Raza • Fare Collected: Rs. 1,800</Text>
-                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>18 Jul 2026 • 09:00 AM</Text>
+                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>18 Jul 2026 • 09:00 AM (Tap to view route)</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
           </View>
         </ScrollView>
@@ -1631,65 +1749,25 @@ export default function HomeScreen({
         </TouchableOpacity>
       </Modal>
 
-      {/* From City Picker Modal */}
-      <Modal visible={showFromPicker} transparent animationType="fade" onRequestClose={() => setShowFromPicker(false)}>
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowFromPicker(false)}
-        >
-          <TouchableWithoutFeedback>
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerTitle}>Select From City</Text>
-              <FlatList
-                data={sheetCities}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.pickerItem}
-                    onPress={() => {
-                      setFilterFromCity(item);
-                      setShowFromPicker(false);
-                    }}
-                  >
-                    <Text style={styles.pickerItemText}>{item}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
+      {/* Interactive Map Location Picker for From / Origin */}
+      <MapLocationPickerModal
+        visible={showFromPicker}
+        title="Select Pickup Location on Map"
+        type="from"
+        initialCityName={filterFromCity || userProfile?.city || 'Islamabad'}
+        onSelectLocation={(locName) => setFilterFromCity(locName)}
+        onClose={() => setShowFromPicker(false)}
+      />
 
-      {/* To City Picker Modal */}
-      <Modal visible={showToPicker} transparent animationType="fade" onRequestClose={() => setShowToPicker(false)}>
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowToPicker(false)}
-        >
-          <TouchableWithoutFeedback>
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerTitle}>Select To City</Text>
-              <FlatList
-                data={sheetCities}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.pickerItem}
-                    onPress={() => {
-                      setFilterToCity(item);
-                      setShowToPicker(false);
-                    }}
-                  >
-                    <Text style={styles.pickerItemText}>{item}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
+      {/* Interactive Map Location Picker for To / Destination */}
+      <MapLocationPickerModal
+        visible={showToPicker}
+        title="Select Destination on Map"
+        type="to"
+        initialCityName={filterToCity || 'Rawalpindi'}
+        onSelectLocation={(locName) => setFilterToCity(locName)}
+        onClose={() => setShowToPicker(false)}
+      />
 
       {/* Edit Offer Ride Modal */}
       <Modal visible={!!editingOfferPost} animationType="slide" transparent onRequestClose={() => setEditingOfferPost(null)}>
@@ -1907,7 +1985,7 @@ export default function HomeScreen({
                 }}
                 onPress={() => {
                   setSelectedRideDetail(null);
-                  Alert.alert('Booking Request Sent! 🚗', `Your seat booking request for ${selectedRideDetail?.fromCity} to ${selectedRideDetail?.toCity} has been dispatched to ${selectedRideDetail?.driverName}.`);
+                  showThemedAlert('Booking Request Sent! 🚗', `Your seat booking request for ${selectedRideDetail?.fromCity} to ${selectedRideDetail?.toCity} has been dispatched to ${selectedRideDetail?.driverName}.`, undefined, { type: 'success', iconName: 'routes', autoDismissMs: 4000 });
                 }}
                 activeOpacity={0.85}
               >
@@ -2029,7 +2107,7 @@ export default function HomeScreen({
                 }}
                 onPress={() => {
                   setSelectedSeatDetail(null);
-                  Alert.alert('Seat Offer Sent! 🤝', `You offered a seat to ${selectedSeatDetail?.passengerName} for the route ${selectedSeatDetail?.fromCity} to ${selectedSeatDetail?.toCity}.`);
+                  showThemedAlert('Seat Offer Sent! 🤝', `You offered a seat to ${selectedSeatDetail?.passengerName} for the route ${selectedSeatDetail?.fromCity} to ${selectedSeatDetail?.toCity}.`, undefined, { type: 'success', iconName: 'steering', autoDismissMs: 4000 });
                 }}
                 activeOpacity={0.85}
               >
@@ -2224,7 +2302,7 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('passenger');
                     setShowPersonaSwitchModal(false);
-                    Alert.alert('Profile Switched! 👤', 'You are now in Passenger Mode.');
+                    showThemedAlert('Profile Switched! 👤', 'You are now in Passenger Mode.', undefined, { type: 'success', iconName: 'account-check', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
@@ -2277,7 +2355,7 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('driver');
                     setShowPersonaSwitchModal(false);
-                    Alert.alert('Profile Switched! 🚗', 'You are now in Driver Mode.');
+                    showThemedAlert('Profile Switched! 🚗', 'You are now in Driver Mode.', undefined, { type: 'success', iconName: 'steering', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
@@ -2821,6 +2899,9 @@ export default function HomeScreen({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Themed Alert Modal for Soft UI consistency */}
+      <ThemedAlertModal {...alertConfig} />
     </SafeAreaView>
   );
 }

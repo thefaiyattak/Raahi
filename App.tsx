@@ -12,6 +12,7 @@ import NotificationScreen from './src/screens/NotificationScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { initialize as initLinking } from './src/services/linkingService';
 import { initializeFareRates, subscribeToFareUpdates } from './src/services/fareEngine';
+import { syncFareFormulaFromGoogleSheets } from './src/services/fareCalculationService';
 import { getAuthSession, AuthSession } from './src/services/authService';
 import { getUserProfile } from './src/services/storage';
 import { TripData, UserProfile } from './src/types';
@@ -41,8 +42,9 @@ function AppContent() {
   const [showRoleSelectModal, setShowRoleSelectModal] = useState(false);
 
   useEffect(() => {
-    // 1. Initialize fare rates
+    // 1. Initialize fare rates and sync latest Fuel & Toll formula from Google Sheets
     initializeFareRates();
+    syncFareFormulaFromGoogleSheets();
 
     // 2. Subscribe to Firebase real-time overrides
     const unsubscribeRates = subscribeToFareUpdates(() => {
@@ -124,8 +126,8 @@ function AppContent() {
     // 1. If session still loading, display progress loader
     if (isLoadingSession) {
       return (
-        <View style={[styles.center, { backgroundColor: theme.background }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
+        <View style={[styles.center, { backgroundColor: theme?.background || '#F2F3F2' }]}>
+          <ActivityIndicator size="large" color={theme?.primary || '#2F9A3C'} />
         </View>
       );
     }
@@ -198,6 +200,10 @@ function AppContent() {
             onNavigateToProfile={() => navigateTo('profile')}
             onNavigateToSettings={() => navigateTo('settings')}
             onNavigateToNotifications={() => navigateTo('notifications')}
+            onNavigateToTripViewer={(trip) => {
+              setActiveTrip(trip);
+              navigateTo('trip_viewer');
+            }}
             onSignOut={handleSignOut}
           />
         );
@@ -215,6 +221,10 @@ function AppContent() {
             onNavigateToProfile={() => navigateTo('profile')}
             onNavigateToSettings={() => navigateTo('settings')}
             onNavigateToNotifications={() => navigateTo('notifications')}
+            onNavigateToTripViewer={(trip) => {
+              setActiveTrip(trip);
+              navigateTo('trip_viewer');
+            }}
             onSignOut={handleSignOut}
             onToggleProfileMode={async (newMode) => {
               const updated = { ...userProfile, activeProfile: newMode };
@@ -228,8 +238,8 @@ function AppContent() {
 
   return (
     <ErrorBoundary onReset={() => setCurrentScreen('home')}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} translucent={false} />
-      <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <StatusBar barStyle={theme?.statusBar || 'dark-content'} backgroundColor={theme?.cardBackground || '#FFFFFF'} translucent={false} />
+      <View style={{ flex: 1, backgroundColor: theme?.background || '#F2F3F2' }}>
         {renderScreen()}
       </View>
     </ErrorBoundary>
@@ -237,12 +247,24 @@ function AppContent() {
 }
 
 import { LanguageProvider } from './src/i18n/LanguageContext';
+import { AlertProvider, useAlert, setGlobalAlertHandler } from './src/context/AlertContext';
+
+function AppWithAlert() {
+  const { showAlert } = useAlert();
+  useEffect(() => {
+    setGlobalAlertHandler(showAlert);
+  }, [showAlert]);
+
+  return <AppContent />;
+}
 
 export default function App() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <AppContent />
+        <AlertProvider>
+          <AppWithAlert />
+        </AlertProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

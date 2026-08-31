@@ -7,12 +7,13 @@ import {
   SafeAreaView,
   ScrollView,
   Switch,
-  Alert,
   Modal,
   Platform,
   StatusBar,
 } from 'react-native';
 import Icon from '../components/AppIcon';
+import ThemedAlertModal, { ThemedAlertProps } from '../components/ThemedAlertModal';
+import AdminFareFormulaModal from '../components/AdminFareFormulaModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AppSettings, UserProfile } from '../types';
@@ -41,8 +42,20 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
     defaultCity: 'Islamabad',
   });
 
-  const [showTermsModal, setShowTermsModal] = useState(false);
-  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showFareFormulaModal, setShowFareFormulaModal] = useState(false);
+
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps>({
+    visible: false,
+    title: '',
+  });
+
+  const showAlert = (config: Omit<ThemedAlertProps, 'visible'>) => {
+    setAlertConfig({
+      ...config,
+      visible: true,
+      onClose: () => setAlertConfig((prev) => ({ ...prev, visible: false })),
+    });
+  };
 
   useEffect(() => {
     loadSettings();
@@ -65,21 +78,25 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
   };
 
   const handleClearCache = () => {
-    Alert.alert(
-      t('clearCache'),
-      'Search history and cached route fares have been cleared.',
-      [{ text: t('close') }]
-    );
+    showAlert({
+      title: t('clearCache'),
+      message: 'Search history and cached route fares have been cleared successfully.',
+      type: 'success',
+      iconName: 'broom',
+      buttons: [{ text: t('close') || 'Close', style: 'default' }],
+    });
   };
 
   const handleResetData = () => {
-    Alert.alert(
-      t('resetStorage'),
-      'Are you sure you want to reset all app preferences? This will sign you out.',
-      [
-        { text: t('cancel'), style: 'cancel' },
+    showAlert({
+      title: t('resetStorage'),
+      message: 'Are you sure you want to reset all app preferences? This will sign you out.',
+      type: 'warning',
+      iconName: 'trash-can-outline',
+      buttons: [
+        { text: t('cancel') || 'Cancel', style: 'cancel' },
         {
-          text: t('confirm'),
+          text: t('confirm') || 'Reset',
           style: 'destructive',
           onPress: async () => {
             await clearDriverProfile();
@@ -87,15 +104,21 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
             onSignOut();
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const handleSignOutPress = () => {
-    Alert.alert(t('logOut'), 'Are you sure you want to log out of Raahi?', [
-      { text: t('cancel'), style: 'cancel' },
-      { text: t('logOut'), style: 'destructive', onPress: onSignOut },
-    ]);
+    showAlert({
+      title: t('logOut'),
+      message: 'Are you sure you want to log out of Raahi?',
+      type: 'warning',
+      iconName: 'logout',
+      buttons: [
+        { text: t('cancel') || 'Cancel', style: 'cancel' },
+        { text: t('logOut') || 'Log Out', style: 'destructive', onPress: onSignOut },
+      ],
+    });
   };
 
   const textStyle = isUrdu ? { textAlign: 'right' as const, lineHeight: 22 } : {};
@@ -263,7 +286,33 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
           </View>
         </View>
 
-        {/* Storage & Privacy Card */}
+        {/* Admin Rate Management & Formula Card */}
+        <View style={styles.sectionCard}>
+          <Text style={[styles.sectionHeader, textStyle]}>
+            Admin Fare Management
+          </Text>
+
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => setShowFareFormulaModal(true)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: 'rgba(47, 154, 60, 0.12)' }]}>
+              <Icon name="banknote" size={20} color="#2F9A3C" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.actionText, textStyle, { fontWeight: '700' }]}>
+                Fuel Price & Toll Charges Formula
+              </Text>
+              <Text style={{ fontSize: 11, color: '#8A908B', marginTop: 2 }}>
+                Update fuel rates (Rs. 344/L) & GT Road / CPEC tolls
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={20} color="#8A908B" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Data & Storage Card */}
         <View style={styles.sectionCard}>
           <Text style={[styles.sectionHeader, textStyle]}>
             {t('dataAndMaintenance')}
@@ -315,6 +364,15 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
           <Text style={styles.signOutBtnText}>{t('logOut')}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Admin Fare Formula Configuration Modal */}
+      <AdminFareFormulaModal
+        visible={showFareFormulaModal}
+        onClose={() => setShowFareFormulaModal(false)}
+      />
+
+      {/* Themed Alert Modal */}
+      <ThemedAlertModal {...alertConfig} />
     </SafeAreaView>
   );
 }

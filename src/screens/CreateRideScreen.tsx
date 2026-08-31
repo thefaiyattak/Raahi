@@ -18,6 +18,8 @@ import {
   StatusBar,
 } from 'react-native';
 import Icon from '../components/AppIcon';
+import MapLocationPickerModal from '../components/MapLocationPickerModal';
+import { showThemedAlert } from '../context/AlertContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getDriverProfile, getUserProfile } from '../services/storage';
@@ -200,21 +202,21 @@ export default function CreateRideScreen({
         posterName: driverProfile.driverName || userProf?.fullName || 'Driver',
       });
 
-      Alert.alert('Ride Offer Posted!', 'Your ride offer is now live for passengers traveling on this route.', [
+      showThemedAlert('Ride Offer Posted!', 'Your ride offer is now live for passengers traveling on this route.', [
         {
           text: 'OK',
           onPress: () => onBack(),
         },
-      ]);
+      ], { type: 'success', iconName: 'car-check', autoDismissMs: 4000 });
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to post ride offer.');
+      showThemedAlert('Error', e.message || 'Failed to post ride offer.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
     }
   };
 
   const handleCopyMessage = () => {
     const msg = `🚗 *Raahi Available!*\n📍 *From:* ${selectedOrigin}\n🏁 *To:* ${selectedDestination}\n💰 *Fare:* Rs. ${calculatedFare.toFixed(2)}\n❄️ *Tier:* ${isAC ? 'AC Premium' : 'Non-AC'}\n⏰ *Time:* ${departureTime}\n👥 *Seats:* ${seatsAvailable}`;
     Clipboard.setString(msg);
-    Alert.alert('Message Copied', 'WhatsApp message text copied to clipboard.');
+    showThemedAlert('Message Copied', 'WhatsApp message text copied to clipboard.', undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
   };
 
   const handleShareWhatsApp = async () => {
@@ -222,7 +224,7 @@ export default function CreateRideScreen({
     try {
       await openWhatsApp(driverProfile.phoneNumber, msg);
     } catch (error: any) {
-      Alert.alert('Share Failed', error.message || 'Unable to open WhatsApp.');
+      showThemedAlert('Share Failed', error.message || 'Unable to open WhatsApp.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
     }
   };
 
@@ -414,54 +416,21 @@ export default function CreateRideScreen({
         )}
       </ScrollView>
 
-      {/* Location Selector Modal */}
-      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  Select {activePicker === 'origin' ? 'Origin' : 'Destination'}
-                </Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)} activeOpacity={0.8}>
-                  <Icon name="close" size={22} color="#262A27" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.searchBarContainer}>
-                <Icon name="magnify" size={20} color="#8A908B" />
-                <TextInput
-                  style={styles.searchBar}
-                  placeholder="Search location..."
-                  placeholderTextColor="#8A908B"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-
-              <FlatList
-                data={filteredLocations}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.locationItem} onPress={() => handleSelectLocation(item)} activeOpacity={0.7}>
-                    <Icon name="map-marker-outline" size={18} color="#2F9A3C" />
-                    <Text style={styles.locationItemText}>{item}</Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <View style={styles.emptyList}>
-                    <Text style={styles.emptyListText}>No locations match your search.</Text>
-                  </View>
-                }
-              />
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
+      {/* Interactive Map Location Picker Modal */}
+      <MapLocationPickerModal
+        visible={modalVisible}
+        title={`Select ${activePicker === 'origin' ? 'Pickup Location' : 'Destination'} on Map`}
+        type={activePicker === 'origin' ? 'from' : 'to'}
+        initialCityName={activePicker === 'origin' ? selectedOrigin : selectedDestination}
+        onSelectLocation={(locName) => {
+          if (activePicker === 'origin') {
+            setSelectedOrigin(locName);
+          } else {
+            setSelectedDestination(locName);
+          }
+        }}
+        onClose={() => setModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
