@@ -28,6 +28,8 @@ import { saveOfferRidePostLocal } from '../services/dbService';
 import { checkAndNotifyMatchingPost } from '../services/notificationService';
 import { openWhatsApp } from '../services/deepLinkService';
 import { DriverProfile, RouteConfig, OfferRidePost } from '../types';
+import { getDynamicFareForTrip, PassengerFareBreakdown } from '../services/fareCalculationService';
+import { calculateDynamicRouteDistance } from '../services/osmService';
 
 interface CreateRideScreenProps {
   initialFrom?: string;
@@ -63,6 +65,10 @@ export default function CreateRideScreen({
   const [seatsAvailable, setSeatsAvailable] = useState('3');
   const [departureTime, setDepartureTime] = useState('14:00 to 15:00');
 
+  // Dynamic Distance & Fare state
+  const [dynamicFareBreakdown, setDynamicFareBreakdown] = useState<PassengerFareBreakdown | null>(null);
+  const [isCalculatingFare, setIsCalculatingFare] = useState(false);
+
   // Dropdown Modal helper state
   const [modalVisible, setModalVisible] = useState(false);
   const [activePicker, setActivePicker] = useState<'origin' | 'destination' | null>(null);
@@ -97,15 +103,29 @@ export default function CreateRideScreen({
     }
   };
 
-  // Run matching when selection changes
+  // Run dynamic fare calculation when origin, destination or AC changes
   useEffect(() => {
     if (selectedOrigin && selectedDestination) {
       const match = matchRoute(routes, selectedOrigin, selectedDestination);
       setMatchedRouteConfig(match);
+
+      // Dynamically calculate exact pickup to dropoff distance & formula fare
+      setIsCalculatingFare(true);
+      getDynamicFareForTrip(selectedOrigin, selectedDestination, isAC, 'below_1000cc', 'gt_road')
+        .then((breakdown) => {
+          setDynamicFareBreakdown(breakdown);
+        })
+        .catch((e) => {
+          console.warn('Dynamic fare calculation error:', e);
+        })
+        .finally(() => {
+          setIsCalculatingFare(false);
+        });
     } else {
       setMatchedRouteConfig(null);
+      setDynamicFareBreakdown(null);
     }
-  }, [selectedOrigin, selectedDestination, routes]);
+  }, [selectedOrigin, selectedDestination, routes, isAC]);
 
   const openPicker = (type: 'origin' | 'destination') => {
     setActivePicker(type);
@@ -162,10 +182,15 @@ export default function CreateRideScreen({
     );
   }
 
-  const calculatedFare = matchedRouteConfig ? (isAC ? matchedRouteConfig.acFare : matchedRouteConfig.nonAcFare) : 0;
+  // Use Dynamic Distance-based Fare Formula
+  const calculatedFare = dynamicFareBreakdown
+    ? dynamicFareBreakdown.perHeadFixedFare
+    : matchedRouteConfig
+    ? (isAC ? matchedRouteConfig.acFare : matchedRouteConfig.nonAcFare)
+    : 0;
 
   const handlePostRideOffer = async () => {
-    if (!selectedOrigin || !selectedDestination || !driverProfile || !matchedRouteConfig) {
+    if (!selectedOrigin || !selectedDestination || !driverProfile) {
       Alert.alert('Validation Error', 'Please select a valid origin and destination route.');
       return;
     }
@@ -195,6 +220,7 @@ export default function CreateRideScreen({
       
       // Notify passengers looking for this route
       await checkAndNotifyMatchingPost({
+        id: newPost.id,
         fromCity: selectedOrigin,
         toCity: selectedDestination,
         departureTime: departureTime.trim() || '14:00 to 15:00',
@@ -316,29 +342,49 @@ export default function CreateRideScreen({
           </View>
         </View>
 
-        {/* Selected Route Match Warning */}
-        {selectedOrigin && selectedDestination && !matchedRouteConfig && (
-          <View style={styles.warningBox}>
-            <Icon name="alert-circle-outline" size={20} color="#262A27" />
-            <Text style={styles.warningText}>
-              No configured route found from {selectedOrigin} to {selectedDestination}. Please check your combinations.
+        {/* Dynamic Road Distance & Fare Formula Badge */}
+        {selectedOrigin && selectedDestination && (
+          <View style={[styles.warningBox, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+            <Icon name="calculator-variant" size={20} color="#16A34A" />
+            <Text style={[styles.warningText, { color: '#166534' }]}>
+              {matchedRouteConfig
+                ? `Standard configured route verified (${matchedRouteConfig.origin} ➔ ${matchedRouteConfig.destination}).`
+                : `Calculated dynamically via OpenStreetMap & Live Fuel Formula for ${selectedOrigin} ➔ ${selectedDestination}.`}
             </Text>
           </View>
         )}
 
         {/* Fare Summary Card */}
-        {matchedRouteConfig && (
+        {selectedOrigin && selectedDestination && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Fare Summary (Per Seat)</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.cardTitle}>Fare Summary (Per Seat)</Text>
+              {dynamicFareBreakdown && (
+                <View style={{ backgroundColor: 'rgba(47, 154, 60, 0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#2F9A3C' }}>
+                    🛣️ {dynamicFareBreakdown.distanceKm} KM
+                  </Text>
+                </View>
+              )}
+            </View>
             
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
               <Text style={{ fontSize: 13, color: '#8A908B' }}>Tier</Text>
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#2F9A3C' }}>{isAC ? 'AC Premium' : 'Non-AC Standard'}</Text>
             </View>
 
+            {dynamicFareBreakdown && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, color: '#8A908B' }}>Fuel Price (Live Sheet)</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Rs. {dynamicFareBreakdown.fuelPricePerLiter}/L</Text>
+              </View>
+            )}
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <Text style={{ fontSize: 13, color: '#8A908B' }}>Fare</Text>
-              <Text style={{ fontSize: 24, fontWeight: '600', color: '#2F9A3C' }}>Rs. {calculatedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+              <Text style={{ fontSize: 24, fontWeight: '700', color: '#2F9A3C' }}>
+                {isCalculatingFare ? 'Calculating...' : `Rs. ${calculatedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+              </Text>
             </View>
 
             {/* Departure Time Input */}

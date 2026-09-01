@@ -134,6 +134,8 @@ export interface UserProfile {
   email: string;
   fullName: string;
   phoneNumber: string;
+  phone?: string;
+  city?: string;
   profilePicture: string; // URL, avatar name, or local asset path
   bloodGroup: string;
   activeProfile?: 'passenger' | 'driver';
@@ -192,11 +194,26 @@ export interface BookingRequest {
   createdAt: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  recipientUid: string;
+  recipientName: string;
+  relatedPostId?: string;
+  text: string;
+  timestamp: number;
+}
+
 export interface AppNotification {
   id: string;
   title: string;
   message: string;
   type: 'booking' | 'offer' | 'system' | 'emergency';
+  postId?: string;
+  fromCity?: string;
+  toCity?: string;
+  role?: 'passenger' | 'driver';
   timestamp: number;
   read: boolean;
 }

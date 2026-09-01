@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import Icon from './AppIcon';
 import {
-  FareFormulaConfig,
   getFareFormulaConfig,
   saveFareFormulaConfig,
   calculatePassengerFare,
   DEFAULT_FARE_FORMULA,
 } from '../services/fareCalculationService';
+import { FareFormulaConfig } from '../types';
 import { showThemedAlert } from '../context/AlertContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';

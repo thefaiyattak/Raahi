@@ -90,6 +90,7 @@ export const markAllNotificationsAsReadLocal = async (): Promise<AppNotification
 
 export const checkAndNotifyMatchingPost = async (
   newPost: {
+    id?: string;
     fromCity: string;
     toCity: string;
     travelDate?: string;
@@ -118,6 +119,10 @@ export const checkAndNotifyMatchingPost = async (
       title,
       message,
       type: isForDriver ? 'booking' : 'offer',
+      postId: newPost.id,
+      fromCity: newPost.fromCity,
+      toCity: newPost.toCity,
+      role: targetRole,
     });
   } catch (e) {
     console.warn('[NotificationService] Error triggering matching notification', e);

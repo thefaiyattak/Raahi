@@ -189,10 +189,11 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
           renderMarkers(${markersJson});
           renderRoute(${routeJson});
 
-          // Bridge message handlers for controls
-          window.addEventListener('message', function(e) {
+          // Bridge message handlers for controls (support both window and document)
+          function handleIncomingAction(data) {
             try {
-              const msg = JSON.parse(e.data);
+              const msg = typeof data === 'string' ? JSON.parse(data) : data;
+              if (!msg) return;
               if (msg.action === 'zoom_in') {
                 map.zoomIn();
               } else if (msg.action === 'zoom_out') {
@@ -201,7 +202,23 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
                 map.flyTo([msg.lat, msg.lng], 15, { animate: true, duration: 1 });
               }
             } catch(err) {}
+          }
+
+          window.addEventListener('message', function(e) {
+            handleIncomingAction(e.data);
           });
+          document.addEventListener('message', function(e) {
+            handleIncomingAction(e.data);
+          });
+
+          // Exposed global helpers for injectJavaScript
+          window.mapZoomIn = function() { if (window.map) window.map.zoomIn(); else map.zoomIn(); };
+          window.mapZoomOut = function() { if (window.map) window.map.zoomOut(); else map.zoomOut(); };
+          window.mapCenterLoc = function(lat, lng) {
+            if (window.map) window.map.flyTo([lat, lng], 15, { animate: true, duration: 1 });
+            else map.flyTo([lat, lng], 15, { animate: true, duration: 1 });
+          };
+          window.map = map;
 
           ${
             onMapPress
@@ -234,20 +251,45 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
   };
 
   const handleZoomIn = () => {
+    webViewRef.current?.injectJavaScript(`
+      if (typeof window.mapZoomIn === 'function') {
+        window.mapZoomIn();
+      } else if (window.map) {
+        window.map.zoomIn();
+      }
+      true;
+    `);
     webViewRef.current?.postMessage(JSON.stringify({ action: 'zoom_in' }));
   };
 
   const handleZoomOut = () => {
+    webViewRef.current?.injectJavaScript(`
+      if (typeof window.mapZoomOut === 'function') {
+        window.mapZoomOut();
+      } else if (window.map) {
+        window.map.zoomOut();
+      }
+      true;
+    `);
     webViewRef.current?.postMessage(JSON.stringify({ action: 'zoom_out' }));
   };
 
   const handleLocateMe = () => {
-    // Center to initial location or Islamabad center
+    const lat = markers[0]?.latitude || initialCenter.latitude;
+    const lng = markers[0]?.longitude || initialCenter.longitude;
+    webViewRef.current?.injectJavaScript(`
+      if (typeof window.mapCenterLoc === 'function') {
+        window.mapCenterLoc(${lat}, ${lng});
+      } else if (window.map) {
+        window.map.flyTo([${lat}, ${lng}], 15, { animate: true, duration: 1 });
+      }
+      true;
+    `);
     webViewRef.current?.postMessage(
       JSON.stringify({
         action: 'center_loc',
-        lat: markers[0]?.latitude || initialCenter.latitude,
-        lng: markers[0]?.longitude || initialCenter.longitude,
+        lat,
+        lng,
       })
     );
   };

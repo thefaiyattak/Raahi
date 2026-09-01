@@ -74,6 +74,8 @@ import {
   AlertCircle,
   CheckCircle2,
   FileCheck,
+  Send,
+  SendHorizontal,
 } from 'lucide-react-native';
 
 import Colors from '../theme/colors';
@@ -174,14 +176,21 @@ const OUTLINE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   'bell-outline': Bell,
   'bell-ring-outline': BellRing,
   'bell-off-outline': BellOff,
+  'chat': MessageSquare,
+  'chat-outline': MessageSquare,
+  'chat-processing-outline': MessageSquare,
   'message-text': MessageSquare,
   'message-square': MessageSquare,
+  'message-reply': MessageSquare,
+  'message-reply-text': MessageSquare,
   'whatsapp': MessageCircle,
   'comment-text-outline': MessageSquare,
   'comment-text-multiple-outline': MessageSquare,
   'phone': Phone,
   'phone-outline': Phone,
   'cellphone-check': Phone,
+  'send': SendHorizontal,
+  'send-outline': SendHorizontal,
 
   // Safety & Verification
   'shield-check': ShieldCheck,

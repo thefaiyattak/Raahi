@@ -5,7 +5,7 @@ const STORAGE_KEY_FARE_FORMULA = '@fare_formula_config';
 
 // Published CSV URL for live Google Sheet fare rates and fuel/toll formula
 const SHEETS_FORMULA_CSV_URL =
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vTX3Op8Amm6UlS5Rd4Ab9g6tizZMpWWwF61yW7gByPJmQujdB8ZK6yHLVbD2_TqU1dUjH7pCQ2R4iFo/pub?output=csv';
+  'https://docs.google.com/spreadsheets/d/1LDDyVseBuoz9QVkRsQ8b3hEDfCDSHWlp/export?format=csv';
 
 /**
  * Default Formula Constants matching official Sheet specifications:
@@ -41,42 +41,65 @@ export const syncFareFormulaFromGoogleSheets = async (): Promise<FareFormulaConf
     if (!response.ok) return await getFareFormulaConfig();
 
     const csvText = await response.text();
-    const lines = csvText.split(/\r?\n/);
+    const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+
+    if (lines.length < 2) return await getFareFormulaConfig();
+
+    // Parse header columns
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const mileageIdx = headers.findIndex((h) => h.includes('mileage'));
+    const passengersIdx = headers.findIndex((h) => h.includes('passengers'));
+    const fuelPriceIdx = headers.findIndex((h) => h.includes('fuel price'));
+    const tollIdx = headers.findIndex((h) => h.includes('toll'));
+    const routeIdx = headers.findIndex((h) => h.includes('route') || h.includes('highway'));
+    const situationIdx = headers.findIndex((h) => h.includes('situation') || h.includes('category'));
 
     let parsedFuel: number | null = null;
+    let parsedCapacity: number | null = null;
     let parsedTollGT: number | null = null;
     let parsedTollCPEC: number | null = null;
     let parsedBelowNonAC: number | null = null;
     let parsedAboveAC: number | null = null;
 
-    for (const line of lines) {
-      const lower = line.toLowerCase();
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
       const cols = line.split(',').map((c) => c.replace(/^["']|["']$/g, '').trim());
+      const lower = line.toLowerCase();
 
-      // Fuel Price
-      if (lower.includes('fuel price') || lower.includes('petrol')) {
-        const num = parseFloat(cols.find((c) => !isNaN(parseFloat(c)) && parseFloat(c) > 50) || '');
-        if (!isNaN(num)) parsedFuel = num;
+      // Extract Fuel Price
+      if (fuelPriceIdx !== -1 && cols[fuelPriceIdx]) {
+        const val = parseFloat(cols[fuelPriceIdx]);
+        if (!isNaN(val) && val > 0) parsedFuel = val;
       }
-      // GT Road Toll
-      if (lower.includes('gt road') || lower.includes('gt_road')) {
-        const num = parseFloat(cols.find((c) => !isNaN(parseFloat(c)) && parseFloat(c) >= 100) || '');
-        if (!isNaN(num)) parsedTollGT = num;
+
+      // Extract Passenger Capacity
+      if (passengersIdx !== -1 && cols[passengersIdx]) {
+        const val = parseInt(cols[passengersIdx], 10);
+        if (!isNaN(val) && val > 0) parsedCapacity = val;
       }
-      // CPEC Toll
-      if (lower.includes('cpec') || lower.includes('motorway')) {
-        const num = parseFloat(cols.find((c) => !isNaN(parseFloat(c)) && parseFloat(c) >= 100) || '');
-        if (!isNaN(num)) parsedTollCPEC = num;
+
+      // Extract Toll Charges per Highway
+      const routeVal = (routeIdx !== -1 ? cols[routeIdx] : lower).toLowerCase();
+      const tollVal = tollIdx !== -1 ? parseFloat(cols[tollIdx]) : NaN;
+
+      if (!isNaN(tollVal) && tollVal > 0) {
+        if (routeVal.includes('gt road') || routeVal.includes('gt_road')) {
+          parsedTollGT = tollVal;
+        } else if (routeVal.includes('cpec') || routeVal.includes('motorway')) {
+          parsedTollCPEC = tollVal;
+        }
       }
-      // Below 1000cc without AC (15 km/l)
-      if (lower.includes('below 1000') && (lower.includes('without') || lower.includes('non-ac'))) {
-        const num = parseFloat(cols.find((c) => !isNaN(parseFloat(c)) && parseFloat(c) >= 5 && parseFloat(c) <= 30) || '');
-        if (!isNaN(num)) parsedBelowNonAC = num;
-      }
-      // 1000cc and above with AC (13 km/l)
-      if (lower.includes('1000') && (lower.includes('with ac') || lower.includes('above'))) {
-        const num = parseFloat(cols.find((c) => !isNaN(parseFloat(c)) && parseFloat(c) >= 5 && parseFloat(c) <= 30) || '');
-        if (!isNaN(num)) parsedAboveAC = num;
+
+      // Extract Mileage according to vehicle situation
+      const situationVal = (situationIdx !== -1 ? cols[situationIdx] : lower).toLowerCase();
+      const mileageVal = mileageIdx !== -1 ? parseFloat(cols[mileageIdx]) : NaN;
+
+      if (!isNaN(mileageVal) && mileageVal > 0) {
+        if (situationVal.includes('below 1000') || situationVal.includes('without ac')) {
+          parsedBelowNonAC = mileageVal;
+        } else if (situationVal.includes('1000') || situationVal.includes('above') || situationVal.includes('with ac')) {
+          parsedAboveAC = mileageVal;
+        }
       }
     }
 
@@ -84,6 +107,7 @@ export const syncFareFormulaFromGoogleSheets = async (): Promise<FareFormulaConf
     const updated: FareFormulaConfig = {
       ...current,
       fuelPricePerLiter: parsedFuel ?? current.fuelPricePerLiter,
+      passengerCapacity: parsedCapacity ?? current.passengerCapacity ?? 4,
       tollCharges: {
         gt_road: parsedTollGT ?? current.tollCharges.gt_road,
         cpec: parsedTollCPEC ?? current.tollCharges.cpec,
@@ -97,6 +121,7 @@ export const syncFareFormulaFromGoogleSheets = async (): Promise<FareFormulaConf
     };
 
     await AsyncStorage.setItem(STORAGE_KEY_FARE_FORMULA, JSON.stringify(updated));
+    console.log('[FareEngine] Synced fare formula from Google Sheet successfully:', updated);
     return updated;
   } catch (e) {
     console.warn('Failed to sync fare formula from Google Sheets, using cached rates', e);
@@ -223,3 +248,20 @@ export const calculatePassengerFare = (
     perHeadFixedFare,
   };
 };
+
+/**
+ * Calculates live dynamic passenger fare between any two locations by computing real road distance
+ */
+export const getDynamicFareForTrip = async (
+  fromName: string,
+  toName: string,
+  isAC: boolean = false,
+  vehicleCategory: VehicleCategory = 'below_1000cc',
+  highwayType: RouteHighwayType = 'gt_road'
+): Promise<PassengerFareBreakdown> => {
+  const { calculateDynamicRouteDistance } = await import('./osmService');
+  const distanceKm = await calculateDynamicRouteDistance(fromName, toName);
+  const config = await getFareFormulaConfig();
+  return calculatePassengerFare(distanceKm, vehicleCategory, isAC, highwayType, config);
+};
+

@@ -93,6 +93,21 @@ function AppContent() {
     }
   };
 
+  const [targetHomeTab, setTargetHomeTab] = useState<'dashboard' | 'home' | 'booking'>('home');
+  const [targetHomeRole, setTargetHomeRole] = useState<'passenger' | 'driver' | undefined>(undefined);
+
+  const handleNotificationSelected = (notif: any) => {
+    if (notif.role) {
+      setTargetHomeRole(notif.role);
+    } else if (notif.type === 'booking') {
+      setTargetHomeRole('driver');
+    } else if (notif.type === 'offer') {
+      setTargetHomeRole('passenger');
+    }
+    setTargetHomeTab('home');
+    setCurrentScreen('home');
+  };
+
   const handleProfileComplete = (profile: UserProfile) => {
     setUserProfile(profile);
   };
@@ -172,7 +187,12 @@ function AppContent() {
           />
         );
       case 'notifications':
-        return <NotificationScreen onBack={handleBack} />;
+        return (
+          <NotificationScreen
+            onBack={handleBack}
+            onSelectNotification={handleNotificationSelected}
+          />
+        );
       case 'vehicle_config':
         return <VehicleConfigScreen onBack={handleBack} />;
       case 'create_ride':
@@ -212,6 +232,8 @@ function AppContent() {
         return (
           <HomeScreen
             userProfile={userProfile}
+            initialTab={targetHomeTab}
+            initialRole={targetHomeRole}
             onNavigateToCreateRide={(from, to) => {
               setSelectedFromCity(from || '');
               setSelectedToCity(to || '');

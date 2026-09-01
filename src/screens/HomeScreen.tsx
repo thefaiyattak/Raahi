@@ -21,10 +21,13 @@ import RatingsModal from '../components/RatingsModal';
 import NeumorphicButton from '../components/NeumorphicButton';
 import ThemedAlertModal, { ThemedAlertProps } from '../components/ThemedAlertModal';
 import MapLocationPickerModal from '../components/MapLocationPickerModal';
+import InAppChatModal from '../components/InAppChatModal';
 import { showThemedAlert } from '../context/AlertContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { UserProfile, OfferRidePost, BookRidePost } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { UserProfile, OfferRidePost, BookRidePost, BookingRequest } from '../types';
+import { LatLng } from '../services/osmService';
 import {
   getOfferRidePostsLocal,
   getBookRidePostsLocal,
@@ -38,11 +41,20 @@ import {
   deleteBookRidePostLocal,
 } from '../services/dbService';
 import { fetchRoutes, getUniqueLocations } from '../services/sheetService';
-import { getNotificationsLocal, checkAndNotifyMatchingPost } from '../services/notificationService';
+import { getNotificationsLocal, addNotificationLocal, checkAndNotifyMatchingPost } from '../services/notificationService';
 import { calculateTrustScore } from '../services/trustScoreService';
+import {
+  getDynamicFareForTrip,
+  getFareFormulaConfig,
+  calculatePassengerFare,
+  PassengerFareBreakdown,
+} from '../services/fareCalculationService';
+import { calculateDynamicRouteDistance } from '../services/osmService';
 
 interface HomeScreenProps {
   userProfile: UserProfile;
+  initialTab?: 'dashboard' | 'home' | 'booking';
+  initialRole?: 'passenger' | 'driver';
   onNavigateToCreateRide: (fromCity?: string, toCity?: string) => void;
   onNavigateToVehicleConfig: () => void;
   onNavigateToProfile: () => void;
@@ -55,6 +67,8 @@ interface HomeScreenProps {
 
 export default function HomeScreen({
   userProfile,
+  initialTab,
+  initialRole,
   onNavigateToCreateRide,
   onNavigateToVehicleConfig,
   onNavigateToProfile,
@@ -68,9 +82,9 @@ export default function HomeScreen({
   const { t, isUrdu, getTextStyle } = useLanguage();
 
   // Top Navigation Tabs: 'dashboard' (Left) | 'home' (Middle) | 'booking' (Right)
-  const [mainNavTab, setMainNavTab] = useState<'dashboard' | 'home' | 'booking'>('dashboard');
+  const [mainNavTab, setMainNavTab] = useState<'dashboard' | 'home' | 'booking'>(initialTab || 'dashboard');
   // Sub Role Tab: 'passenger' | 'driver' - initial state synced with user active profile
-  const [subRoleTab, setSubRoleTab] = useState<'passenger' | 'driver'>(userProfile?.activeProfile || 'passenger');
+  const [subRoleTab, setSubRoleTab] = useState<'passenger' | 'driver'>(initialRole || userProfile?.activeProfile || 'passenger');
 
   useEffect(() => {
     if (userProfile?.activeProfile) {
@@ -94,8 +108,8 @@ export default function HomeScreen({
   // Destination Filters for Booking Screen
   const [filterFromCity, setFilterFromCity] = useState('');
   const [filterToCity, setFilterToCity] = useState('');
-  const [showFromPicker, setShowFromPicker] = useState(false);
-  const [showToPicker, setShowToPicker] = useState(false);
+  const [showFilterFromPicker, setShowFilterFromPicker] = useState(false);
+  const [showFilterToPicker, setShowFilterToPicker] = useState(false);
 
   // Data lists
   const [offerPosts, setOfferPosts] = useState<OfferRidePost[]>([]);
@@ -103,12 +117,22 @@ export default function HomeScreen({
 
   // Modals & Forms
   const [showBookFormModal, setShowBookFormModal] = useState(false);
+  const [showBookFromPicker, setShowBookFromPicker] = useState(false);
+  const [showBookToPicker, setShowBookToPicker] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showRatingsModal, setShowRatingsModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showAddRouteModal, setShowAddRouteModal] = useState(false);
   const [showEarningsModal, setShowEarningsModal] = useState(false);
   const [showPersonaSwitchModal, setShowPersonaSwitchModal] = useState(false);
+
+  // In-App Chat Modal State
+  const [chatTarget, setChatTarget] = useState<{
+    recipientUid: string;
+    recipientName: string;
+    relatedPostId?: string;
+    tripRoute?: string;
+  } | null>(null);
 
   // Themed Alert Modal State
   const [alertConfig, setAlertConfig] = useState<ThemedAlertProps>({
@@ -187,10 +211,48 @@ export default function HomeScreen({
   // Book Ride Form State
   const [bookFrom, setBookFrom] = useState('');
   const [bookTo, setBookTo] = useState('');
+  const [bookFromCoord, setBookFromCoord] = useState<LatLng | undefined>(undefined);
+  const [bookToCoord, setBookToCoord] = useState<LatLng | undefined>(undefined);
   const [bagsCount, setBagsCount] = useState('1');
   const [passengersCount, setPassengersCount] = useState('1');
   const [isAC, setIsAC] = useState(true);
   const [departureTime, setDepartureTime] = useState('14:00 to 15:00');
+  const [bookFareBreakdown, setBookFareBreakdown] = useState<PassengerFareBreakdown | null>(null);
+  const [isCalculatingBookFare, setIsCalculatingBookFare] = useState(false);
+
+  // Recalculate dynamic fare whenever bookFrom, bookTo, coordinates or isAC changes
+  useEffect(() => {
+    let isCancelled = false;
+    if (bookFrom && bookTo) {
+      setIsCalculatingBookFare(true);
+      (async () => {
+        try {
+          const distanceKm = await calculateDynamicRouteDistance(
+            bookFrom,
+            bookTo,
+            bookFromCoord,
+            bookToCoord
+          );
+          const config = await getFareFormulaConfig();
+          const breakdown = calculatePassengerFare(distanceKm, 'below_1000cc', isAC, 'gt_road', config);
+          if (!isCancelled) {
+            setBookFareBreakdown(breakdown);
+          }
+        } catch (e) {
+          console.warn('Dynamic fare calculation error:', e);
+        } finally {
+          if (!isCancelled) {
+            setIsCalculatingBookFare(false);
+          }
+        }
+      })();
+    } else {
+      setBookFareBreakdown(null);
+    }
+    return () => {
+      isCancelled = true;
+    };
+  }, [bookFrom, bookTo, bookFromCoord, bookToCoord, isAC]);
 
   // Real Ticking Countdown Timer (for upcoming rides)
   const [countdownSeconds, setCountdownSeconds] = useState(9918); // 02h : 45m : 18s
@@ -241,6 +303,7 @@ export default function HomeScreen({
   // Selected Detail Modals for Active Rides and Seat Requests (Screenshots 1 & 2)
   const [selectedRideDetail, setSelectedRideDetail] = useState<OfferRidePost | null>(null);
   const [selectedSeatDetail, setSelectedSeatDetail] = useState<BookRidePost | null>(null);
+  const [requestedSeatsCount, setRequestedSeatsCount] = useState<number>(1);
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -258,6 +321,22 @@ export default function HomeScreen({
           const allDriverOffers = await getOfferRidePostsLocal();
           const myPassengerRequests = await getMyBookRidePostsLocal(userProfile.uid);
 
+          // Helper to normalize city/location strings (e.g. 'Street 132, Islamabad Capital Territory' -> 'islamabad')
+          const normalizeLocation = (loc: string) => {
+            return loc.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+          };
+
+          const isLocationMatch = (locA: string, locB: string) => {
+            if (!locA || !locB) return false;
+            const a = normalizeLocation(locA);
+            const b = normalizeLocation(locB);
+            if (a === b) return true;
+            // Check if one contains the other or shares key city words
+            const wordsA = a.split(/\s+/).filter((w) => w.length > 2);
+            const wordsB = b.split(/\s+/).filter((w) => w.length > 2);
+            return wordsA.some((w) => b.includes(w)) || wordsB.some((w) => a.includes(w));
+          };
+
           let matchingDriverPosts: OfferRidePost[] = [];
 
           if (myPassengerRequests.length > 0) {
@@ -265,8 +344,8 @@ export default function HomeScreen({
             matchingDriverPosts = allDriverOffers.filter((driverOffer) =>
               myPassengerRequests.some((myReq) => {
                 const routeMatch =
-                  driverOffer.fromCity.trim().toLowerCase() === myReq.fromCity.trim().toLowerCase() &&
-                  driverOffer.toCity.trim().toLowerCase() === myReq.toCity.trim().toLowerCase();
+                  isLocationMatch(driverOffer.fromCity, myReq.fromCity) &&
+                  isLocationMatch(driverOffer.toCity, myReq.toCity);
 
                 const dateMatch =
                   !myReq.travelDate ||
@@ -276,15 +355,23 @@ export default function HomeScreen({
                 return routeMatch && dateMatch;
               })
             );
+            // Fallback: If strict route match produces 0 results, show all active rides so passenger can always find available rides
+            if (matchingDriverPosts.length === 0) {
+              matchingDriverPosts = allDriverOffers;
+            }
           } else if (passengerQuickRoutesList.length > 0) {
             // If no active seat request posted yet, match against passenger's saved quick routes
             matchingDriverPosts = allDriverOffers.filter((driverOffer) =>
               passengerQuickRoutesList.some(
                 (r) =>
-                  r.from.trim().toLowerCase() === driverOffer.fromCity.trim().toLowerCase() &&
-                  r.to.trim().toLowerCase() === driverOffer.toCity.trim().toLowerCase()
+                  isLocationMatch(r.from, driverOffer.fromCity) &&
+                  isLocationMatch(r.to, driverOffer.toCity)
               )
             );
+            // Fallback: show all available driver offers if no quick route matched
+            if (matchingDriverPosts.length === 0) {
+              matchingDriverPosts = allDriverOffers;
+            }
           } else {
             matchingDriverPosts = allDriverOffers;
           }
@@ -301,9 +388,23 @@ export default function HomeScreen({
           setBookPosts(data);
         } else {
           // In Active Now Tab (mainNavTab === 'home'):
-          // Query ALL active passenger requests, and match strictly against the DRIVER's posted ride offers (or saved routes)
+          // Query ALL active passenger requests, and match against the DRIVER's posted ride offers (or saved routes)
           const allPassengerRequests = await getBookRidePostsLocal();
           const myDriverOffers = await getMyOfferRidePostsLocal(userProfile.uid);
+
+          const normalizeLocation = (loc: string) => {
+            return loc.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+          };
+
+          const isLocationMatch = (locA: string, locB: string) => {
+            if (!locA || !locB) return false;
+            const a = normalizeLocation(locA);
+            const b = normalizeLocation(locB);
+            if (a === b) return true;
+            const wordsA = a.split(/\s+/).filter((w) => w.length > 2);
+            const wordsB = b.split(/\s+/).filter((w) => w.length > 2);
+            return wordsA.some((w) => b.includes(w)) || wordsB.some((w) => a.includes(w));
+          };
 
           let matchingPassengerPosts: BookRidePost[] = [];
 
@@ -312,8 +413,8 @@ export default function HomeScreen({
             matchingPassengerPosts = allPassengerRequests.filter((passengerReq) =>
               myDriverOffers.some((myOffer) => {
                 const routeMatch =
-                  passengerReq.fromCity.trim().toLowerCase() === myOffer.fromCity.trim().toLowerCase() &&
-                  passengerReq.toCity.trim().toLowerCase() === myOffer.toCity.trim().toLowerCase();
+                  isLocationMatch(passengerReq.fromCity, myOffer.fromCity) &&
+                  isLocationMatch(passengerReq.toCity, myOffer.toCity);
 
                 const dateMatch =
                   !myOffer.travelDate ||
@@ -323,15 +424,22 @@ export default function HomeScreen({
                 return routeMatch && dateMatch;
               })
             );
+            // Fallback: If strict route match produces 0 results, show all available passenger requests so driver sees live market
+            if (matchingPassengerPosts.length === 0) {
+              matchingPassengerPosts = allPassengerRequests;
+            }
           } else if (driverQuickRoutesList.length > 0) {
             // If no active ride offer posted yet, match against driver's saved quick routes
             matchingPassengerPosts = allPassengerRequests.filter((passengerReq) =>
               driverQuickRoutesList.some(
                 (r) =>
-                  r.from.trim().toLowerCase() === passengerReq.fromCity.trim().toLowerCase() &&
-                  r.to.trim().toLowerCase() === passengerReq.toCity.trim().toLowerCase()
+                  isLocationMatch(r.from, passengerReq.fromCity) &&
+                  isLocationMatch(r.to, passengerReq.toCity)
               )
             );
+            if (matchingPassengerPosts.length === 0) {
+              matchingPassengerPosts = allPassengerRequests;
+            }
           } else {
             matchingPassengerPosts = allPassengerRequests;
           }
@@ -400,9 +508,10 @@ export default function HomeScreen({
       };
 
       await saveBookRidePostLocal(newPost);
-      
+
       // Notify drivers operating on this route
       await checkAndNotifyMatchingPost({
+        id: newPost.id,
         fromCity: bookFrom,
         toCity: bookTo,
         departureTime,
@@ -557,27 +666,102 @@ export default function HomeScreen({
     });
   };
 
-  const handleSendBookingRequest = async (post: OfferRidePost) => {
+  const handleSendBookingRequest = async (post: OfferRidePost, seatsToBook: number = 1) => {
     try {
-      const newRequest = {
+      const seatsCount = Math.max(1, Math.min(seatsToBook, post.seatsAvailable));
+      const newRequest: BookingRequest = {
         id: 'req_' + Date.now(),
-        rideId: post.id,
-        passengerId: userProfile?.uid || 'guest',
+        ridePostId: post.id,
+        passengerUid: userProfile?.uid || 'guest',
         passengerName: userProfile?.fullName || 'Passenger',
-        passengerPhone: userProfile?.phone || '',
-        seatsRequested: 1,
-        status: 'pending' as const,
+        passengerPhone: userProfile?.phoneNumber || userProfile?.phone || '',
+        seatsRequested: seatsCount,
+        status: 'accepted',
         createdAt: Date.now(),
       };
       await saveBookingRequestLocal(newRequest);
+
+      // Decrease available seats in local storage for this ride offer
+      const postsRaw = await AsyncStorage.getItem('@local_db_offer_ride_posts');
+      if (postsRaw) {
+        const posts: OfferRidePost[] = JSON.parse(postsRaw);
+        const postIndex = posts.findIndex((p) => p.id === post.id);
+        if (postIndex !== -1) {
+          posts[postIndex].seatsAvailable = Math.max(0, posts[postIndex].seatsAvailable - seatsCount);
+          await AsyncStorage.setItem('@local_db_offer_ride_posts', JSON.stringify(posts));
+        }
+      }
+
+      // Add Notification for the Driver and Passenger
+      await addNotificationLocal({
+        title: `🎟️ Seat Confirmed: ${post.fromCity} ➔ ${post.toCity}`,
+        message: `${userProfile?.fullName || 'Passenger'} successfully booked ${seatsCount} seat(s) on ${post.driverName}'s ride. Total: Rs. ${(post.farePerSeat * seatsCount).toLocaleString()}.`,
+        type: 'booking',
+        postId: post.id,
+        fromCity: post.fromCity,
+        toCity: post.toCity,
+        role: 'passenger',
+      });
+
+      fetchPosts();
+
       showThemedAlert(
-        'Seat Request Sent',
-        `A seat request has been sent to ${post.driverName}. You will receive confirmation once accepted.`,
+        'Seat Booked Successfully! 🚗',
+        `You have confirmed ${seatsCount} seat${seatsCount > 1 ? 's' : ''} (Total: Rs. ${(post.farePerSeat * seatsCount).toLocaleString()}) with ${post.driverName}. Ride status updated.`,
         undefined,
-        { type: 'success', iconName: 'routes', autoDismissMs: 4000 }
+        { type: 'success', iconName: 'check-decagram', autoDismissMs: 4500 }
       );
     } catch (e: any) {
-      showThemedAlert('Error', e.message || 'Failed to send seat request.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
+      showThemedAlert('Error', e.message || 'Failed to complete seat booking.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
+    }
+  };
+
+  const handleOfferSeatToPassenger = async (post: BookRidePost) => {
+    try {
+      const newRequest: BookingRequest = {
+        id: 'offer_req_' + Date.now(),
+        ridePostId: post.id,
+        passengerUid: post.passengerUid,
+        passengerName: post.passengerName,
+        passengerPhone: post.passengerPhone,
+        seatsRequested: 1,
+        status: 'accepted',
+        createdAt: Date.now(),
+      };
+      await saveBookingRequestLocal(newRequest);
+
+      // Decrement passenger request required count or mark completed
+      const bookPostsRaw = await AsyncStorage.getItem('@local_db_book_ride_posts');
+      if (bookPostsRaw) {
+        const bPosts: BookRidePost[] = JSON.parse(bookPostsRaw);
+        const bIndex = bPosts.findIndex((p) => p.id === post.id);
+        if (bIndex !== -1) {
+          bPosts[bIndex].passengersCount = Math.max(0, (bPosts[bIndex].passengersCount || 1) - 1);
+          await AsyncStorage.setItem('@local_db_book_ride_posts', JSON.stringify(bPosts));
+        }
+      }
+
+      // Add Notification
+      await addNotificationLocal({
+        title: `🚗 Ride Seat Offered: ${post.fromCity} ➔ ${post.toCity}`,
+        message: `${userProfile?.fullName || 'Driver'} offered a seat to ${post.passengerName} for ${post.fromCity} to ${post.toCity}.`,
+        type: 'offer',
+        postId: post.id,
+        fromCity: post.fromCity,
+        toCity: post.toCity,
+        role: 'driver',
+      });
+
+      fetchPosts();
+
+      showThemedAlert(
+        'Seat Offer Sent! 🤝',
+        `You offered a seat to ${post.passengerName} for the route ${post.fromCity} to ${post.toCity}. Status confirmed.`,
+        undefined,
+        { type: 'success', iconName: 'steering', autoDismissMs: 4500 }
+      );
+    } catch (e: any) {
+      showThemedAlert('Error', e.message || 'Failed to offer seat.', undefined, { type: 'error', iconName: 'shield-alert', autoDismissMs: 4000 });
     }
   };
 
@@ -603,11 +787,11 @@ export default function HomeScreen({
             <Icon
               name={
                 userProfile.profilePicture === 'av1' ? 'account-tie' :
-                userProfile.profilePicture === 'av2' ? 'account-cowboy-hat' :
-                userProfile.profilePicture === 'av3' ? 'account-detective' :
-                userProfile.profilePicture === 'av4' ? 'account-graduation-cap' :
-                userProfile.profilePicture === 'av5' ? 'account-child' :
-                'account'
+                  userProfile.profilePicture === 'av2' ? 'account-cowboy-hat' :
+                    userProfile.profilePicture === 'av3' ? 'account-detective' :
+                      userProfile.profilePicture === 'av4' ? 'account-graduation-cap' :
+                        userProfile.profilePicture === 'av5' ? 'account-child' :
+                          'account'
               }
               size={22}
               color="#2F9A3C"
@@ -723,7 +907,7 @@ export default function HomeScreen({
             <View style={styles.routeInputRow}>
               <TouchableOpacity
                 style={styles.routeInputField}
-                onPress={() => setShowFromPicker(true)}
+                onPress={() => setShowFilterFromPicker(true)}
                 activeOpacity={0.85}
               >
                 <Text
@@ -744,7 +928,7 @@ export default function HomeScreen({
 
               <TouchableOpacity
                 style={styles.routeInputField}
-                onPress={() => setShowToPicker(true)}
+                onPress={() => setShowFilterToPicker(true)}
                 activeOpacity={0.85}
               >
                 <Text
@@ -1166,7 +1350,10 @@ export default function HomeScreen({
                         shadowRadius: 6,
                         elevation: 2,
                       }}
-                      onPress={() => setSelectedRideDetail(post)}
+                      onPress={() => {
+                        setRequestedSeatsCount(1);
+                        setSelectedRideDetail(post);
+                      }}
                       activeOpacity={0.85}
                     >
                       {/* Live User Header */}
@@ -1205,14 +1392,16 @@ export default function HomeScreen({
                       </View>
 
                       {/* Route Banner Box */}
-                      <View style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 12, padding: 10, marginBottom: 10 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <Text style={[{ fontSize: 15, fontWeight: '900', color: '#1B3E1E' }, getTextStyle()]}>
+                      <View style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                          <Text style={[{ fontSize: 14, fontWeight: '800', color: '#1B3E1E', flex: 1, marginRight: 8 }, getTextStyle()]}>
                             {post.fromCity} ➔ {post.toCity}
                           </Text>
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#2E7D32' }}>
-                            Rs. {post.farePerSeat} / seat
-                          </Text>
+                          <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '900', color: '#2E7D32' }}>
+                              Rs. {post.farePerSeat.toLocaleString()} <Text style={{ fontSize: 10, fontWeight: '600' }}>/ seat</Text>
+                            </Text>
+                          </View>
                         </View>
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
@@ -1230,7 +1419,10 @@ export default function HomeScreen({
                         <Text style={{ fontSize: 11, color: '#6B7280' }}>🚗 {post.vehicleDetails}</Text>
                         <TouchableOpacity
                           style={{ backgroundColor: '#2E7D32', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                          onPress={() => setSelectedRideDetail(post)}
+                          onPress={() => {
+                            setRequestedSeatsCount(1);
+                            setSelectedRideDetail(post);
+                          }}
                         >
                           <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>View Live Details ➔</Text>
                         </TouchableOpacity>
@@ -1424,7 +1616,7 @@ export default function HomeScreen({
                   justifyContent: 'space-between',
                   marginBottom: 8,
                 }}
-                onPress={() => setShowFromPicker(true)}
+                onPress={() => setShowBookFromPicker(true)}
                 activeOpacity={0.8}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -1466,7 +1658,7 @@ export default function HomeScreen({
                   justifyContent: 'space-between',
                   marginBottom: 8,
                 }}
-                onPress={() => setShowToPicker(true)}
+                onPress={() => setShowBookToPicker(true)}
                 activeOpacity={0.8}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -1496,7 +1688,7 @@ export default function HomeScreen({
 
               {/* Air Conditioning Toggle */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 10 }}>
-                <View>
+                <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Air Conditioning (AC)</Text>
                   <Text style={[{ fontSize: 11, color: '#8A908B', marginTop: 2 }, getTextStyle()]}>Enable AC premium tier pricing</Text>
                 </View>
@@ -1504,19 +1696,19 @@ export default function HomeScreen({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: isAC ? 'rgba(47, 154, 60, 0.10)' : '#FFFFFF',
-                    borderWidth: 1,
-                    borderColor: isAC ? '#2F9A3C' : '#E3E7E3',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 12,
+                    backgroundColor: isAC ? 'rgba(47, 154, 60, 0.12)' : '#F2F3F2',
+                    borderWidth: 1.5,
+                    borderColor: isAC ? '#2F9A3C' : '#D1D5D1',
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 14,
                   }}
-                  onPress={() => setIsAC(!isAC)}
-                  activeOpacity={0.8}
+                  onPress={() => setIsAC((prev) => !prev)}
+                  activeOpacity={0.7}
                 >
                   <Icon name={isAC ? 'snowflake' : 'fan'} size={16} color={isAC ? '#2F9A3C' : '#8A908B'} />
-                  <Text style={{ marginLeft: 6, fontWeight: '600', fontSize: 12, color: isAC ? '#2F9A3C' : '#8A908B' }}>
-                    {isAC ? 'AC' : 'Non-AC'}
+                  <Text style={{ marginLeft: 6, fontWeight: '700', fontSize: 13, color: isAC ? '#2F9A3C' : '#8A908B' }}>
+                    {isAC ? 'AC Premium' : 'Non-AC'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1573,7 +1765,7 @@ export default function HomeScreen({
                 onChangeText={setDepartureTime}
               />
 
-              {/* Fare Summary (From Google Sheet) */}
+              {/* Dynamic Distance-based Fare Summary */}
               <View style={{
                 backgroundColor: '#FFFFFF',
                 borderRadius: 18,
@@ -1582,18 +1774,51 @@ export default function HomeScreen({
                 borderWidth: 1,
                 borderColor: '#E3E7E3',
               }}>
-                <Text style={[{ fontSize: 11, fontWeight: '600', color: '#2F9A3C', marginBottom: 6, letterSpacing: 0.5 }, getTextStyle()]}>
-                  FARE SUMMARY (FROM GOOGLE SHEET)
-                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={[{ fontSize: 11, fontWeight: '700', color: '#2F9A3C', letterSpacing: 0.5 }, getTextStyle()]}>
+                    FARE SUMMARY (LIVE FORMULA)
+                  </Text>
+                  {bookFareBreakdown && (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#2F9A3C' }}>
+                      🛣️ {bookFareBreakdown.distanceKm} KM
+                    </Text>
+                  )}
+                </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                   <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Tier Option:</Text>
                   <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
                     {isAC ? 'AC Premium' : 'Non-AC Standard'}
                   </Text>
                 </View>
+                {bookFareBreakdown && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Fuel Rate:</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
+                      Rs. {bookFareBreakdown.fuelPricePerLiter} / L
+                    </Text>
+                  </View>
+                )}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Fare per seat:</Text>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#2F9A3C' }}>Rs. 1800.00</Text>
+                  <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Fare rate per seat:</Text>
+                  <Text style={[{ fontSize: 14, fontWeight: '700', color: '#262A27' }]}>
+                    {isCalculatingBookFare
+                      ? 'Calculating...'
+                      : bookFareBreakdown
+                        ? `Rs. ${bookFareBreakdown.perHeadFixedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                        : 'Rs. 0.00'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderColor: '#F2F3F2' }}>
+                  <Text style={[{ fontSize: 14, fontWeight: '700', color: '#2F9A3C' }, getTextStyle()]}>
+                    Total Est. Fare ({parseInt(passengersCount, 10) || 1} Seat{(parseInt(passengersCount, 10) || 1) > 1 ? 's' : ''}):
+                  </Text>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#2F9A3C' }}>
+                    {isCalculatingBookFare
+                      ? 'Calculating...'
+                      : bookFareBreakdown
+                        ? `Rs. ${(bookFareBreakdown.perHeadFixedFare * (parseInt(passengersCount, 10) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                        : 'Rs. 0.00'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -1628,6 +1853,34 @@ export default function HomeScreen({
               </Text>
             </TouchableOpacity>
           </ScrollView>
+
+          {/* Dedicated Map Location Picker for Booking Modal Origin */}
+          <MapLocationPickerModal
+            visible={showBookFromPicker}
+            title="Select Pickup Location on Map"
+            type="from"
+            initialCityName={bookFrom || userProfile?.city || 'Islamabad'}
+            onSelectLocation={(locName, coords) => {
+              setBookFrom(locName);
+              setBookFromCoord(coords);
+              setShowBookFromPicker(false);
+            }}
+            onClose={() => setShowBookFromPicker(false)}
+          />
+
+          {/* Dedicated Map Location Picker for Booking Modal Destination */}
+          <MapLocationPickerModal
+            visible={showBookToPicker}
+            title="Select Destination on Map"
+            type="to"
+            initialCityName={bookTo || 'Rawalpindi'}
+            onSelectLocation={(locName, coords) => {
+              setBookTo(locName);
+              setBookToCoord(coords);
+              setShowBookToPicker(false);
+            }}
+            onClose={() => setShowBookToPicker(false)}
+          />
         </SafeAreaView>
       </Modal>
 
@@ -1749,24 +2002,29 @@ export default function HomeScreen({
         </TouchableOpacity>
       </Modal>
 
-      {/* Interactive Map Location Picker for From / Origin */}
+      {/* Interactive Map Location Picker for Home Screen Feed Filters */}
       <MapLocationPickerModal
-        visible={showFromPicker}
-        title="Select Pickup Location on Map"
+        visible={showFilterFromPicker}
+        title="Select Filter Departure City"
         type="from"
         initialCityName={filterFromCity || userProfile?.city || 'Islamabad'}
-        onSelectLocation={(locName) => setFilterFromCity(locName)}
-        onClose={() => setShowFromPicker(false)}
+        onSelectLocation={(locName) => {
+          setFilterFromCity(locName);
+          setShowFilterFromPicker(false);
+        }}
+        onClose={() => setShowFilterFromPicker(false)}
       />
 
-      {/* Interactive Map Location Picker for To / Destination */}
       <MapLocationPickerModal
-        visible={showToPicker}
-        title="Select Destination on Map"
+        visible={showFilterToPicker}
+        title="Select Filter Destination City"
         type="to"
         initialCityName={filterToCity || 'Rawalpindi'}
-        onSelectLocation={(locName) => setFilterToCity(locName)}
-        onClose={() => setShowToPicker(false)}
+        onSelectLocation={(locName) => {
+          setFilterToCity(locName);
+          setShowFilterToPicker(false);
+        }}
+        onClose={() => setShowFilterToPicker(false)}
       />
 
       {/* Edit Offer Ride Modal */}
@@ -1861,94 +2119,258 @@ export default function HomeScreen({
 
 
       {/* Active Ride Detail View Modal (Clickable Screenshot 1 Card) */}
-      <Modal visible={!!selectedRideDetail} animationType="slide" transparent onRequestClose={() => setSelectedRideDetail(null)}>
+      <Modal visible={!!selectedRideDetail} animationType="fade" transparent onRequestClose={() => setSelectedRideDetail(null)}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setSelectedRideDetail(null)}
         >
           <TouchableWithoutFeedback>
-            <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, padding: 20 }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <View style={[styles.routeBadge, { backgroundColor: theme.primaryBackground, paddingHorizontal: 12, paddingVertical: 6 }]}>
-                  <Text style={[styles.routeBadgeText, { color: theme.primary, fontSize: 14 }, getTextStyle()]}>
+            <View style={[styles.modalContainer, {
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              padding: 22,
+              borderWidth: 1,
+              borderColor: '#E8EBE8',
+              ...Platform.select({
+                ios: {
+                  shadowColor: '#1B3E1E',
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 20,
+                },
+                android: {
+                  elevation: 8,
+                },
+              }),
+            }]}>
+              {/* Route Banner Header with Close Button */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                <View style={{
+                  flex: 1,
+                  backgroundColor: '#F0FDF4',
+                  borderWidth: 1,
+                  borderColor: '#DCFCE7',
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginRight: 10,
+                }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '800', color: '#15803D', lineHeight: 18 }, getTextStyle()]}>
                     {selectedRideDetail?.fromCity} ➔ {selectedRideDetail?.toCity}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedRideDetail(null)} style={{ padding: 4 }}>
-                  <Icon name="close" size={22} color={theme.textSecondary} />
+                <TouchableOpacity
+                  onPress={() => setSelectedRideDetail(null)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: '#F3F4F6',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="close" size={18} color="#4B5563" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.textPrimary, marginBottom: 4 }, getTextStyle()]}>
-                Driver: {selectedRideDetail?.driverName}
-              </Text>
+              {/* Driver Identity */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={[{ fontSize: 18, fontWeight: '900', color: '#1F2937' }, getTextStyle()]}>
+                  Driver: {selectedRideDetail?.driverName}
+                </Text>
+              </View>
 
-              {/* Pre-Booking Privacy View (Handwritten Notes Rule 1) */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#D97706' }}>⭐ 4.9 Rating (32 Reviews)</Text>
+              {/* Badges Row */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>⭐ 4.9 Rating (32 Reviews)</Text>
                 </View>
-                <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#2E7D32' }}>99% Trust Score</Text>
+                <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#15803D' }}>99% Trust Score</Text>
                 </View>
               </View>
 
-              <Text style={[{ fontSize: 13, color: theme.textSecondary, marginBottom: 3 }, getTextStyle()]}>
-                Vehicle: {selectedRideDetail?.vehicleDetails}
-              </Text>
-              
-              <Text style={[{ fontSize: 11, color: '#D97706', fontWeight: '700', marginBottom: 6 }, getTextStyle()]}>
-                🔒 Vehicle Registration No: Revealed after driver accepts booking
-              </Text>
+              {/* Vehicle Details */}
+              <View style={{ marginBottom: 12, gap: 4 }}>
+                <Text style={[{ fontSize: 13, color: '#4B5563', fontWeight: '500' }, getTextStyle()]}>
+                  Vehicle: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedRideDetail?.vehicleDetails}</Text>
+                </Text>
 
-              <Text style={[{ fontSize: 13, color: theme.textSecondary, marginBottom: 14 }, getTextStyle()]}>
-                Departure Window: {selectedRideDetail?.departureTime}
-              </Text>
+                <Text style={[{ fontSize: 11, color: '#D97706', fontWeight: '700' }, getTextStyle()]}>
+                  🔒 Vehicle Registration No: Revealed after driver accepts booking
+                </Text>
+
+                <Text style={[{ fontSize: 13, color: '#4B5563', fontWeight: '500' }, getTextStyle()]}>
+                  Departure Window: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedRideDetail?.departureTime}</Text>
+                </Text>
+              </View>
 
               {/* Fare & Seat Summary Box */}
-              <View style={[styles.liveInfoBox, { backgroundColor: theme.primaryBackground, borderColor: theme.primaryBorder, padding: 14, marginBottom: 18 }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>Seats Available:</Text>
-                  <Text style={[{ fontSize: 16, fontWeight: '800', color: theme.primary }]}>{selectedRideDetail?.seatsAvailable} Seats Left</Text>
+              <View style={{
+                backgroundColor: '#F8FAF9',
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                borderRadius: 16,
+                padding: 14,
+                marginBottom: 16,
+              }}>
+                {/* Seats Available Row */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#374151' }, getTextStyle()]}>Seats Available:</Text>
+                  <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) > 0 ? '#16A34A' : '#DC2626' }]}>
+                    {selectedRideDetail?.seatsAvailable} Seat{(selectedRideDetail?.seatsAvailable || 0) > 1 ? 's' : ''} Left
+                  </Text>
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>Fare Rate:</Text>
-                  <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.primary }]}>Rs. {selectedRideDetail?.farePerSeat} / seat</Text>
+
+                {/* Seat Selector Stepper for Passenger */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#1F2937' }, getTextStyle()]}>Book Seats:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        backgroundColor: requestedSeatsCount > 1 ? '#FFFFFF' : '#F3F4F6',
+                        borderWidth: 1,
+                        borderColor: requestedSeatsCount > 1 ? '#2F9A3C' : '#D1D5DB',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                      disabled={requestedSeatsCount <= 1}
+                      onPress={() => setRequestedSeatsCount((prev) => Math.max(1, prev - 1))}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="minus" size={16} color={requestedSeatsCount > 1 ? '#2F9A3C' : '#9CA3AF'} />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 17, fontWeight: '900', color: '#111827', minWidth: 20, textAlign: 'center' }}>
+                      {requestedSeatsCount}
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        backgroundColor: requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#2F9A3C' : '#E5E7EB',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                      disabled={requestedSeatsCount >= (selectedRideDetail?.seatsAvailable || 1)}
+                      onPress={() => setRequestedSeatsCount((prev) => Math.min(selectedRideDetail?.seatsAvailable || 1, prev + 1))}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="plus" size={16} color={requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#FFFFFF' : '#9CA3AF'} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Single Seat Rate */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 6 }}>
+                  <Text style={[{ fontSize: 12, color: '#6B7280', fontWeight: '500' }, getTextStyle()]}>Rate per seat:</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#374151' }]}>Rs. {selectedRideDetail?.farePerSeat.toLocaleString()} / seat</Text>
+                </View>
+
+                {/* Total Multiplied Fare */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#F3F4F6' }}>
+                  <Text style={[{ fontSize: 14, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>
+                    Total Fare ({requestedSeatsCount} Seat{requestedSeatsCount > 1 ? 's' : ''}):
+                  </Text>
+                  <Text style={[{ fontSize: 20, fontWeight: '900', color: '#15803D' }]}>
+                    Rs. {((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()}
+                  </Text>
                 </View>
               </View>
 
               {/* Action Buttons: WhatsApp, Call, Send Booking Request */}
+              {/* Action Buttons: WhatsApp, Call, In-App Message, Book Seat */}
               <TouchableOpacity
                 style={{
                   width: '100%',
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
+                  height: 50,
+                  borderRadius: 16,
                   backgroundColor: '#2F9A3C',
-                  marginBottom: 10,
+                  marginBottom: 8,
                   ...Platform.select({
                     ios: {
                       shadowColor: '#2F9A3C',
                       shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.25,
-                      shadowRadius: 8,
+                      shadowOpacity: 0.2,
+                      shadowRadius: 6,
                     },
                     android: {
-                      elevation: 3,
+                      elevation: 2,
                     },
                   }),
                 }}
                 onPress={() => {
-                  Linking.openURL(`https://wa.me/923449793574?text=Hi%20${encodeURIComponent(selectedRideDetail?.driverName || '')}%2C%20I%20want%20to%20book%20a%20seat%20from%20${encodeURIComponent(selectedRideDetail?.fromCity || '')}%20to%20${encodeURIComponent(selectedRideDetail?.toCity || '')}.`);
+                  const driverPhone = selectedRideDetail?.driverPhone || '03449793574';
+                  const totalAmt = (selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount;
+                  const message = `Hi ${selectedRideDetail?.driverName || ''}, I would like to book ${requestedSeatsCount} seat(s) for the ride from ${selectedRideDetail?.fromCity || ''} to ${selectedRideDetail?.toCity || ''}. Total Fare: Rs. ${totalAmt.toLocaleString()}.`;
+                  handleOpenWhatsApp(driverPhone, message);
                 }}
                 activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Driver</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Driver</Text>
               </TouchableOpacity>
+
+              {/* Direct Call & In-App Message Row */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 48,
+                    borderRadius: 16,
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                  }}
+                  onPress={() => handleTriggerEmergencyCall(selectedRideDetail?.driverPhone || '03449793574')}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="phone" size={18} color="#374151" style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#374151' }, getTextStyle()]}>Direct Call</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 48,
+                    borderRadius: 16,
+                    backgroundColor: '#EFF6FF',
+                    borderWidth: 1,
+                    borderColor: '#BFDBFE',
+                  }}
+                  onPress={() => {
+                    if (selectedRideDetail) {
+                      const detail = selectedRideDetail;
+                      setSelectedRideDetail(null);
+                      setChatTarget({
+                        recipientUid: detail.driverUid || 'driver_user',
+                        recipientName: detail.driverName,
+                        relatedPostId: detail.id,
+                        tripRoute: `${detail.fromCity} ➔ ${detail.toCity}`,
+                      });
+                    }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="chat-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>In-App Message</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
                 style={{
@@ -1956,40 +2378,28 @@ export default function HomeScreen({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: '#E3E7E3',
-                  marginBottom: 10,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#F0FDF4' : '#F3F4F6',
+                  borderWidth: 1.5,
+                  borderColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#2F9A3C' : '#D1D5DB',
                 }}
-                onPress={() => handleTriggerEmergencyCall('03449793574')}
-                activeOpacity={0.85}
-              >
-                <Icon name="phone" size={20} color="#262A27" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Call Driver Directly</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{
-                  width: '100%',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: '#2F9A3C',
-                  marginTop: 2,
-                }}
+                disabled={(selectedRideDetail?.seatsAvailable || 0) < requestedSeatsCount}
                 onPress={() => {
-                  setSelectedRideDetail(null);
-                  showThemedAlert('Booking Request Sent! 🚗', `Your seat booking request for ${selectedRideDetail?.fromCity} to ${selectedRideDetail?.toCity} has been dispatched to ${selectedRideDetail?.driverName}.`, undefined, { type: 'success', iconName: 'routes', autoDismissMs: 4000 });
+                  if (selectedRideDetail) {
+                    const postToBook = selectedRideDetail;
+                    const seats = requestedSeatsCount;
+                    setSelectedRideDetail(null);
+                    handleSendBookingRequest(postToBook, seats);
+                  }
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>Send Seat Booking Request</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#15803D' : '#9CA3AF' }, getTextStyle()]}>
+                  {(selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount
+                    ? `Book ${requestedSeatsCount} Seat${requestedSeatsCount > 1 ? 's' : ''} (Rs. ${((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()})`
+                    : 'Not Enough Seats Available'}
+                </Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -1997,7 +2407,7 @@ export default function HomeScreen({
       </Modal>
 
       {/* Active Seat Request Detail View Modal (Clickable Screenshot 2 Card) */}
-      <Modal visible={!!selectedSeatDetail} animationType="slide" transparent onRequestClose={() => setSelectedSeatDetail(null)}>
+      <Modal visible={!!selectedSeatDetail} animationType="fade" transparent onRequestClose={() => setSelectedSeatDetail(null)}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -2007,37 +2417,58 @@ export default function HomeScreen({
             <View style={{
               backgroundColor: '#FFFFFF',
               borderRadius: 24,
-              padding: 20,
+              padding: 22,
               borderWidth: 1,
-              borderColor: '#E3E7E3',
+              borderColor: '#E8EBE8',
               ...Platform.select({
                 ios: {
-                  shadowColor: '#262A27',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.16,
-                  shadowRadius: 16,
+                  shadowColor: '#1B3E1E',
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 20,
                 },
                 android: {
                   elevation: 8,
                 },
               }),
             }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <View style={{ backgroundColor: 'rgba(47, 154, 60, 0.10)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>
+              {/* Route Banner Header with Close Button */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                <View style={{
+                  flex: 1,
+                  backgroundColor: '#F0FDF4',
+                  borderWidth: 1,
+                  borderColor: '#DCFCE7',
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginRight: 10,
+                }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '800', color: '#15803D', lineHeight: 18 }, getTextStyle()]}>
                     {selectedSeatDetail?.fromCity} ➔ {selectedSeatDetail?.toCity}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedSeatDetail(null)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F3F2', justifyContent: 'center', alignItems: 'center' }}>
-                  <Icon name="close" size={18} color="#262A27" />
+                <TouchableOpacity
+                  onPress={() => setSelectedSeatDetail(null)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: '#F3F4F6',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="close" size={18} color="#4B5563" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 18, fontWeight: '600', color: '#262A27', marginBottom: 4 }, getTextStyle()]}>
+              <Text style={[{ fontSize: 18, fontWeight: '900', color: '#1F2937', marginBottom: 4 }, getTextStyle()]}>
                 Passenger: {selectedSeatDetail?.passengerName}
               </Text>
-              <Text style={[{ fontSize: 13, color: '#8A908B', marginBottom: 18 }, getTextStyle()]}>
-                Requested Departure Time: {selectedSeatDetail?.departureTime}
+              <Text style={[{ fontSize: 13, color: '#4B5563', marginBottom: 18, fontWeight: '500' }, getTextStyle()]}>
+                Requested Departure Time: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedSeatDetail?.departureTime}</Text>
               </Text>
 
               {/* Action Buttons for Driver */}
@@ -2047,19 +2478,19 @@ export default function HomeScreen({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
+                  height: 50,
+                  borderRadius: 16,
                   backgroundColor: '#2F9A3C',
-                  marginBottom: 10,
+                  marginBottom: 8,
                   ...Platform.select({
                     ios: {
                       shadowColor: '#2F9A3C',
                       shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.25,
-                      shadowRadius: 8,
+                      shadowOpacity: 0.2,
+                      shadowRadius: 6,
                     },
                     android: {
-                      elevation: 3,
+                      elevation: 2,
                     },
                   }),
                 }}
@@ -2069,8 +2500,60 @@ export default function HomeScreen({
                 activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Passenger</Text>
               </TouchableOpacity>
+
+              {/* Direct Call & In-App Message Row */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 48,
+                    borderRadius: 16,
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                  }}
+                  onPress={() => handleTriggerEmergencyCall('03449793574')}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="phone" size={18} color="#374151" style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#374151' }, getTextStyle()]}>Direct Call</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 48,
+                    borderRadius: 16,
+                    backgroundColor: '#EFF6FF',
+                    borderWidth: 1,
+                    borderColor: '#BFDBFE',
+                  }}
+                  onPress={() => {
+                    if (selectedSeatDetail) {
+                      const detail = selectedSeatDetail;
+                      setSelectedSeatDetail(null);
+                      setChatTarget({
+                        recipientUid: detail.passengerUid || 'passenger_user',
+                        recipientName: detail.passengerName,
+                        relatedPostId: detail.id,
+                        tripRoute: `${detail.fromCity} ➔ ${detail.toCity}`,
+                      });
+                    }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="chat-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>In-App Message</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
                 style={{
@@ -2078,40 +2561,22 @@ export default function HomeScreen({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: '#E3E7E3',
-                  marginBottom: 10,
-                }}
-                onPress={() => handleTriggerEmergencyCall('03449793574')}
-                activeOpacity={0.85}
-              >
-                <Icon name="phone" size={20} color="#262A27" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Call Passenger Directly</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{
-                  width: '100%',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: 52,
-                  borderRadius: 18,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#F0FDF4',
+                  borderWidth: 1.5,
                   borderColor: '#2F9A3C',
-                  marginTop: 2,
                 }}
                 onPress={() => {
-                  setSelectedSeatDetail(null);
-                  showThemedAlert('Seat Offer Sent! 🤝', `You offered a seat to ${selectedSeatDetail?.passengerName} for the route ${selectedSeatDetail?.fromCity} to ${selectedSeatDetail?.toCity}.`, undefined, { type: 'success', iconName: 'steering', autoDismissMs: 4000 });
+                  if (selectedSeatDetail) {
+                    const post = selectedSeatDetail;
+                    setSelectedSeatDetail(null);
+                    handleOfferSeatToPassenger(post);
+                  }
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={[{ fontSize: 14, fontWeight: '600', color: '#2F9A3C' }, getTextStyle()]}>Offer Seat to Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>Offer a Seat to Passenger</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -2302,7 +2767,7 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('passenger');
                     setShowPersonaSwitchModal(false);
-                    showThemedAlert('Profile Switched! 👤', 'You are now in Passenger Mode.', undefined, { type: 'success', iconName: 'account-check', autoDismissMs: 4000 });
+                    showThemedAlert('Profile Switched!', 'You are now in Passenger Mode.', undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
@@ -2355,7 +2820,7 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('driver');
                     setShowPersonaSwitchModal(false);
-                    showThemedAlert('Profile Switched! 🚗', 'You are now in Driver Mode.', undefined, { type: 'success', iconName: 'steering', autoDismissMs: 4000 });
+                    showThemedAlert('Profile Switched!', 'You are now in Driver Mode.', undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
@@ -2899,6 +3364,19 @@ export default function HomeScreen({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* In-App Chat Modal */}
+      {chatTarget && (
+        <InAppChatModal
+          visible={!!chatTarget}
+          onClose={() => setChatTarget(null)}
+          currentUser={userProfile}
+          recipientUid={chatTarget.recipientUid}
+          recipientName={chatTarget.recipientName}
+          relatedPostId={chatTarget.relatedPostId}
+          tripRoute={chatTarget.tripRoute}
+        />
+      )}
 
       {/* Themed Alert Modal for Soft UI consistency */}
       <ThemedAlertModal {...alertConfig} />

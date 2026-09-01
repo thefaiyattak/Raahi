@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserProfile, OfferRidePost, BookRidePost, BookingRequest } from '../types';
+import { UserProfile, OfferRidePost, BookRidePost, BookingRequest, ChatMessage } from '../types';
 
 const KEYS = {
   FIREBASE_USER_PROFILES: '@firebase_remote_user_profiles',
   LOCAL_OFFER_RIDE_POSTS: '@local_db_offer_ride_posts',
   LOCAL_BOOK_RIDE_POSTS: '@local_db_book_ride_posts',
   LOCAL_BOOKING_REQUESTS: '@local_db_booking_requests',
+  LOCAL_CHAT_MESSAGES: '@local_db_chat_messages',
 };
 
 // ==========================================
@@ -65,7 +66,28 @@ export const getOfferRidePostsLocal = async (
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
   if (!raw) return [];
   let posts: OfferRidePost[] = JSON.parse(raw);
-  posts = posts.filter((p) => isPostActive(p.departureTimestamp));
+  // Auto-heal any posts created with 0 or missing farePerSeat using live dynamic formula
+  for (let i = 0; i < posts.length; i++) {
+    if (!posts[i].farePerSeat || posts[i].farePerSeat <= 0) {
+      try {
+        const { getDynamicFareForTrip } = await import('./fareCalculationService');
+        const breakdown = await getDynamicFareForTrip(
+          posts[i].fromCity,
+          posts[i].toCity,
+          posts[i].isAC,
+          'below_1000cc',
+          'gt_road'
+        );
+        if (breakdown && breakdown.perHeadFixedFare > 0) {
+          posts[i].farePerSeat = breakdown.perHeadFixedFare;
+        } else {
+          posts[i].farePerSeat = 1500;
+        }
+      } catch {
+        posts[i].farePerSeat = 1500;
+      }
+    }
+  }
 
   if (fromCity && fromCity.trim().length > 0) {
     posts = posts.filter((p) => p.fromCity.toLowerCase() === fromCity.trim().toLowerCase());
@@ -216,4 +238,35 @@ export const deleteBookRidePostLocal = async (postId: string): Promise<void> => 
   posts = posts.filter((p) => p.id !== postId);
   await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(posts));
 };
+
+// ==========================================
+// 4. IN-APP CHAT MESSAGING
+// ==========================================
+
+export const saveChatMessageLocal = async (message: ChatMessage): Promise<void> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_CHAT_MESSAGES);
+  const messages: ChatMessage[] = raw ? JSON.parse(raw) : [];
+  messages.push(message);
+  await AsyncStorage.setItem(KEYS.LOCAL_CHAT_MESSAGES, JSON.stringify(messages));
+};
+
+export const getChatMessagesLocal = async (
+  user1Uid: string,
+  user2Uid: string,
+  relatedPostId?: string
+): Promise<ChatMessage[]> => {
+  const raw = await AsyncStorage.getItem(KEYS.LOCAL_CHAT_MESSAGES);
+  if (!raw) return [];
+  const messages: ChatMessage[] = JSON.parse(raw);
+  return messages.filter((m) => {
+    const isBetweenUsers =
+      (m.senderUid === user1Uid && m.recipientUid === user2Uid) ||
+      (m.senderUid === user2Uid && m.recipientUid === user1Uid);
+    if (relatedPostId) {
+      return isBetweenUsers && m.relatedPostId === relatedPostId;
+    }
+    return isBetweenUsers;
+  }).sort((a, b) => a.timestamp - b.timestamp);
+};
+
 

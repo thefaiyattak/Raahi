@@ -23,11 +23,13 @@ import {
 interface NotificationScreenProps {
   onBack: () => void;
   onUnreadCountChanged?: (count: number) => void;
+  onSelectNotification?: (notification: AppNotification) => void;
 }
 
 export default function NotificationScreen({
   onBack,
   onUnreadCountChanged,
+  onSelectNotification,
 }: NotificationScreenProps) {
   const { t, isUrdu, getTextStyle } = useLanguage();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -155,7 +157,12 @@ export default function NotificationScreen({
                 styles.notifCard,
                 !item.read ? styles.notifCardUnread : null,
               ]}
-              onPress={() => handleMarkAsRead(item.id)}
+              onPress={async () => {
+                await handleMarkAsRead(item.id);
+                if (onSelectNotification) {
+                  onSelectNotification(item);
+                }
+              }}
               activeOpacity={0.85}
             >
               <View style={[styles.iconCircle, !item.read ? styles.iconCircleActive : null]}>

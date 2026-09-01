@@ -10,6 +10,7 @@ import {
   FlatList,
   Platform,
   SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import Icon from './AppIcon';
 import { OSMMapView, OSMMapMarker } from './OSMMapView';
@@ -67,12 +68,12 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
   useEffect(() => {
     if (visible && initialCityName) {
+      setLocationName(initialCityName);
       const match = popularCities.find(
         (c) => c.name.toLowerCase() === initialCityName.toLowerCase()
       );
       if (match) {
         setSelectedCoord({ latitude: match.lat, longitude: match.lng });
-        setLocationName(match.name);
       }
     }
   }, [visible, initialCityName]);
@@ -132,16 +133,21 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
             <Icon name="arrow-left" size={20} color="#262A27" />
           </TouchableOpacity>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[styles.headerTitle, getTextStyle()]}>{title || 'Select Location on Map'}</Text>
-            <Text style={styles.headerSubtitle}>Tap anywhere on the map or search</Text>
+          <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8 }}>
+            <Text style={[styles.headerTitle, getTextStyle()]} numberOfLines={1}>
+              {title || 'Select Location on Map'}
+            </Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              Tap anywhere on the map or search
+            </Text>
           </View>
-          <View style={{ width: 44 }} />
+          <View style={{ width: 40 }} />
         </View>
 
         {/* Search Bar Input */}
@@ -289,6 +295,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F2F3F2',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   header: {
     flexDirection: 'row',
@@ -426,7 +433,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: Platform.OS === 'android' ? 20 : 32,
+    paddingBottom: Platform.OS === 'android' ? 28 : 36,
     borderTopWidth: 1,
     borderColor: '#E3E7E3',
     ...Platform.select({

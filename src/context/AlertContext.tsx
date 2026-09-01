@@ -23,7 +23,7 @@ const AlertContext = createContext<AlertContextType>({
 export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [alertState, setAlertState] = useState<AlertOptions | null>(null);
   const [visible, setVisible] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hideAlert = useCallback(() => {
     if (timerRef.current) {

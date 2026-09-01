@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import Icon from '../components/AppIcon';
 import ThemedAlertModal, { ThemedAlertProps } from '../components/ThemedAlertModal';
-import AdminFareFormulaModal from '../components/AdminFareFormulaModal';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AppSettings, UserProfile } from '../types';
@@ -41,8 +40,6 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
     language: language,
     defaultCity: 'Islamabad',
   });
-
-  const [showFareFormulaModal, setShowFareFormulaModal] = useState(false);
 
   const [alertConfig, setAlertConfig] = useState<ThemedAlertProps>({
     visible: false,
@@ -286,32 +283,6 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
           </View>
         </View>
 
-        {/* Admin Rate Management & Formula Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
-            Admin Fare Management
-          </Text>
-
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => setShowFareFormulaModal(true)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: 'rgba(47, 154, 60, 0.12)' }]}>
-              <Icon name="banknote" size={20} color="#2F9A3C" />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.actionText, textStyle, { fontWeight: '700' }]}>
-                Fuel Price & Toll Charges Formula
-              </Text>
-              <Text style={{ fontSize: 11, color: '#8A908B', marginTop: 2 }}>
-                Update fuel rates (Rs. 344/L) & GT Road / CPEC tolls
-              </Text>
-            </View>
-            <Icon name="chevron-right" size={20} color="#8A908B" />
-          </TouchableOpacity>
-        </View>
-
         {/* Data & Storage Card */}
         <View style={styles.sectionCard}>
           <Text style={[styles.sectionHeader, textStyle]}>
@@ -364,12 +335,6 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
           <Text style={styles.signOutBtnText}>{t('logOut')}</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      {/* Admin Fare Formula Configuration Modal */}
-      <AdminFareFormulaModal
-        visible={showFareFormulaModal}
-        onClose={() => setShowFareFormulaModal(false)}
-      />
 
       {/* Themed Alert Modal */}
       <ThemedAlertModal {...alertConfig} />

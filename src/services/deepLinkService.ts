@@ -9,16 +9,15 @@ export const encodeTripToDeepLink = (trip: TripData): string => {
     params.set('ol', trip.originLat.toString());
     params.set('og', trip.originLng.toString());
     params.set('dl', trip.destinationLat.toString());
-    params.set('dg', trip.destinationLng.toString());
-    params.set('dist', trip.distanceKm.toString());
-    params.set('fare', trip.fare.toString());
+    if (trip.distanceKm !== undefined) params.set('dist', trip.distanceKm.toString());
+    if (trip.fare !== undefined) params.set('fare', trip.fare.toString());
     params.set('ac', trip.isAC ? '1' : '0');
-    params.set('ph', trip.driverPhone);
-    params.set('vn', trip.driverVehicleName);
-    params.set('vm', trip.driverVehicleModel);
+    params.set('ph', trip.driverPhone || '');
+    if (trip.driverVehicleName) params.set('vn', trip.driverVehicleName);
+    if (trip.driverVehicleModel) params.set('vm', trip.driverVehicleModel);
     params.set('ts', trip.timestamp.toString());
-    params.set('opi', trip.originPlaceId);
-    params.set('dpi', trip.destinationPlaceId);
+    if (trip.originPlaceId) params.set('opi', trip.originPlaceId);
+    if (trip.destinationPlaceId) params.set('dpi', trip.destinationPlaceId);
 
     return `raahi://ride?${params.toString()}`;
   } catch (error) {
@@ -101,7 +100,7 @@ export const generateWhatsAppMessage = (trip: TripData, deepLink: string): strin
 📍 *From:* ${trip.originAddress}
 🏁 *To:* ${trip.destinationAddress}
 
-💰 *Fare:* Rs. ${trip.fare.toFixed(2)}
+💰 *Fare:* Rs. ${(trip.fare ?? 0).toFixed(2)}
 🧊 *Tier:* ${trip.isAC ? 'AC' : 'Non-AC'}
 
 🚙 *Vehicle:* ${trip.driverVehicleName} ${trip.driverVehicleModel}
