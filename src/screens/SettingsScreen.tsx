@@ -29,7 +29,7 @@ interface SettingsScreenProps {
 
 export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile, onSwitchRole, userProfile }: SettingsScreenProps) {
   const { isDarkMode, setDarkMode, theme } = useTheme();
-  const { language, setLanguage, t, isUrdu } = useLanguage();
+  const { language, setLanguage, t, isUrdu, getTextStyle } = useLanguage();
 
   const [settings, setSettings] = useState<AppSettings>({
     darkMode: isDarkMode,
@@ -77,7 +77,7 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
   const handleClearCache = () => {
     showAlert({
       title: t('clearCache'),
-      message: 'Search history and cached route fares have been cleared successfully.',
+      message: isUrdu ? 'تلاش کی ہسٹری اور محفوظ کرایوں کا ڈیٹا کامیابی سے صاف ہو گیا ہے۔' : 'Search history and cached route fares have been cleared successfully.',
       type: 'success',
       iconName: 'broom',
       buttons: [{ text: t('close') || 'Close', style: 'default' }],
@@ -87,7 +87,7 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
   const handleResetData = () => {
     showAlert({
       title: t('resetStorage'),
-      message: 'Are you sure you want to reset all app preferences? This will sign you out.',
+      message: isUrdu ? 'کیا آپ واقعی تمام ایپ ڈیٹا ری سیٹ کرنا چاہتے ہیں؟ آپ کا اکاؤنٹ لاگ آؤٹ ہو جائے گا۔' : 'Are you sure you want to reset all app preferences? This will sign you out.',
       type: 'warning',
       iconName: 'trash-can-outline',
       buttons: [
@@ -108,7 +108,7 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
   const handleSignOutPress = () => {
     showAlert({
       title: t('logOut'),
-      message: 'Are you sure you want to log out of Raahi?',
+      message: isUrdu ? 'کیا آپ واقعی راہی ایپ سے لاگ آؤٹ کرنا چاہتے ہیں؟' : 'Are you sure you want to log out of Raahi?',
       type: 'warning',
       iconName: 'logout',
       buttons: [
@@ -118,17 +118,15 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
     });
   };
 
-  const textStyle = isUrdu ? { textAlign: 'right' as const, lineHeight: 22 } : {};
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.background} />
       {/* Soft UI Elevated App Bar */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-          <Icon name="arrow-left" size={20} color="#262A27" />
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+        <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={onBack} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, textStyle]}>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>
           {t('settingsAndPreferences')}
         </Text>
         <View style={{ width: 44 }} />
@@ -136,9 +134,9 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
 
       <ScrollView contentContainerStyle={styles.container}>
         {/* Profile Details Shortcut Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
-            {isUrdu ? 'اکاؤنٹ اور پروفائل' : 'Account & Profile'}
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeader, getTextStyle()]}>
+            {t('accountAndProfile')}
           </Text>
 
           <TouchableOpacity style={styles.row} onPress={onNavigateToProfile} activeOpacity={0.8}>
@@ -147,21 +145,21 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
                 <Icon name="account-circle-outline" size={20} color="#2F9A3C" />
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={[styles.rowTitle, textStyle]}>
-                  {isUrdu ? 'پروفائل کی تفصیلات' : 'My Profile & Details'}
+                <Text style={[styles.rowTitle, { color: theme.textPrimary }, getTextStyle()]}>
+                  {t('myProfileAndDetails')}
                 </Text>
-                <Text style={[styles.rowSubtitle, textStyle]}>
-                  {isUrdu ? 'ذاتی معلومات اور سی این آئی سی کی ترتیبات دیکھیں' : 'View profile, phone number and verification details'}
+                <Text style={[styles.rowSubtitle, { color: theme.textSecondary }, getTextStyle()]}>
+                  {t('viewProfileSubtitle')}
                 </Text>
               </View>
             </View>
-            <Icon name="chevron-right" size={20} color="#8A908B" />
+            <Icon name="chevron-right" size={20} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
         {/* Appearance & Theme Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeader, getTextStyle()]}>
             {t('appearanceAndTheme')}
           </Text>
 
@@ -171,76 +169,27 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
                 <Icon name="theme-light-dark" size={20} color="#2F9A3C" />
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={[styles.rowTitle, textStyle]}>{t('darkMode')}</Text>
-                <Text style={[styles.rowSubtitle, textStyle]}>
-                  {isDarkMode ? 'Dark Mode Enabled' : 'Light Mode Enabled'}
+                <Text style={[styles.rowTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('darkMode')}</Text>
+                <Text style={[styles.rowSubtitle, { color: theme.textSecondary }, getTextStyle()]}>
+                  {isDarkMode ? t('darkModeEnabled') : t('lightModeEnabled')}
                 </Text>
               </View>
             </View>
             <Switch
-              value={settings.darkMode}
-              onValueChange={(val) => updateToggle('darkMode', val)}
-              trackColor={{ false: '#E9ECE9', true: '#2F9A3C' }}
+              value={isDarkMode}
+              onValueChange={async (val) => {
+                await setDarkMode(val);
+                setSettings(prev => ({ ...prev, darkMode: val }));
+              }}
+              trackColor={{ false: theme.border, true: '#2F9A3C' }}
               thumbColor="#FFFFFF"
             />
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Language Switcher with Soft Segmented Pills */}
-          <View style={styles.languageRow}>
-            <View style={styles.rowInfo}>
-              <View style={styles.iconCircle}>
-                <Icon name="translate" size={20} color="#2F9A3C" />
-              </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={[styles.rowTitle, textStyle]}>{t('appLanguage')}</Text>
-                <Text style={[styles.rowSubtitle, textStyle]}>English / اردو</Text>
-              </View>
-            </View>
-
-            <View style={styles.langSelector}>
-              <TouchableOpacity
-                style={[
-                  styles.langOption,
-                  language === 'English' ? styles.langOptionActive : null,
-                ]}
-                onPress={() => updateToggle('language', 'English')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.langText,
-                    language === 'English' ? styles.langTextActive : styles.langTextInactive,
-                  ]}
-                >
-                  EN
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.langOption,
-                  language === 'Urdu' ? styles.langOptionActive : null,
-                ]}
-                onPress={() => updateToggle('language', 'Urdu')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.langText,
-                    language === 'Urdu' ? styles.langTextActive : styles.langTextInactive,
-                  ]}
-                >
-                  اردو
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
 
         {/* Notifications & Sound Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeader, getTextStyle()]}>
             {t('notificationsAndAlerts')}
           </Text>
 
@@ -250,19 +199,19 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
                 <Icon name="bell-outline" size={20} color="#2F9A3C" />
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={[styles.rowTitle, textStyle]}>{t('pushNotifications')}</Text>
-                <Text style={[styles.rowSubtitle, textStyle]}>Instant ride offers and request alerts</Text>
+                <Text style={[styles.rowTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('pushNotifications')}</Text>
+                <Text style={[styles.rowSubtitle, { color: theme.textSecondary }, getTextStyle()]}>{t('instantRideAlerts')}</Text>
               </View>
             </View>
             <Switch
               value={settings.pushNotifications}
               onValueChange={(val) => updateToggle('pushNotifications', val)}
-              trackColor={{ false: '#E9ECE9', true: '#2F9A3C' }}
+              trackColor={{ false: theme.border, true: '#2F9A3C' }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.row}>
             <View style={styles.rowInfo}>
@@ -270,22 +219,22 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
                 <Icon name="volume-high" size={20} color="#2F9A3C" />
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={[styles.rowTitle, textStyle]}>{t('appSounds')}</Text>
-                <Text style={[styles.rowSubtitle, textStyle]}>Play chime on new matches</Text>
+                <Text style={[styles.rowTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('appSounds')}</Text>
+                <Text style={[styles.rowSubtitle, { color: theme.textSecondary }, getTextStyle()]}>{t('playChimeMatches')}</Text>
               </View>
             </View>
             <Switch
               value={settings.soundEnabled}
               onValueChange={(val) => updateToggle('soundEnabled', val)}
-              trackColor={{ false: '#E9ECE9', true: '#2F9A3C' }}
+              trackColor={{ false: theme.border, true: '#2F9A3C' }}
               thumbColor="#FFFFFF"
             />
           </View>
         </View>
 
         {/* Data & Storage Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeader, getTextStyle()]}>
             {t('dataAndMaintenance')}
           </Text>
 
@@ -293,46 +242,46 @@ export default function SettingsScreen({ onBack, onSignOut, onNavigateToProfile,
             <View style={styles.iconCircle}>
               <Icon name="refresh" size={20} color="#2F9A3C" />
             </View>
-            <Text style={[styles.actionText, textStyle]}>{t('clearCache')}</Text>
-            <Icon name="chevron-right" size={20} color="#8A908B" style={{ marginLeft: 'auto' }} />
+            <Text style={[styles.actionText, { color: theme.textPrimary }, getTextStyle()]}>{t('clearCache')}</Text>
+            <Icon name="chevron-right" size={20} color={theme.textSecondary} style={{ marginLeft: 'auto' }} />
           </TouchableOpacity>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <TouchableOpacity style={styles.actionRow} onPress={handleResetData} activeOpacity={0.8}>
             <View style={styles.iconCircle}>
-              <Icon name="trash-can-outline" size={20} color="#8A908B" />
+              <Icon name="trash-can-outline" size={20} color={theme.textSecondary} />
             </View>
-            <Text style={[styles.actionText, textStyle]}>{t('resetStorage')}</Text>
-            <Icon name="chevron-right" size={20} color="#8A908B" style={{ marginLeft: 'auto' }} />
+            <Text style={[styles.actionText, { color: theme.textPrimary }, getTextStyle()]}>{t('resetStorage')}</Text>
+            <Icon name="chevron-right" size={20} color={theme.textSecondary} style={{ marginLeft: 'auto' }} />
           </TouchableOpacity>
         </View>
 
         {/* About App Info Card */}
-        <View style={styles.sectionCard}>
-          <Text style={[styles.sectionHeader, textStyle]}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeader, getTextStyle()]}>
             {t('aboutAndLegal')}
           </Text>
 
           <View style={styles.appInfoRow}>
-            <Text style={[styles.appInfoLabel, textStyle]}>App Version</Text>
-            <Text style={styles.appInfoVal}>2.0.0 (Soft UI Edition)</Text>
+            <Text style={[styles.appInfoLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('appVersion')}</Text>
+            <Text style={[styles.appInfoVal, { color: theme.textPrimary }]}>2.0.0 (Soft UI Edition)</Text>
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <View style={styles.appInfoRow}>
-            <Text style={[styles.appInfoLabel, textStyle]}>Platform</Text>
-            <Text style={styles.appInfoVal}>Raahi Intercity Core</Text>
+            <Text style={[styles.appInfoLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('platformInfo')}</Text>
+            <Text style={[styles.appInfoVal, { color: theme.textPrimary }]}>Raahi Intercity Core</Text>
           </View>
         </View>
 
         {/* Log Out Button (Soft UI Secondary with Red Accent Icon) */}
         <TouchableOpacity
-          style={styles.signOutBtn}
+          style={[styles.signOutBtn, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
           onPress={handleSignOutPress}
           activeOpacity={0.85}
         >
-          <Icon name="logout" size={18} color="#262A27" style={{ marginRight: 8 }} />
-          <Text style={styles.signOutBtnText}>{t('logOut')}</Text>
+          <Icon name="logout" size={18} color="#E53935" style={{ marginRight: 8 }} />
+          <Text style={[styles.signOutBtnText, { color: theme.textPrimary }, getTextStyle()]}>{t('logOut')}</Text>
         </TouchableOpacity>
       </ScrollView>
 

@@ -24,7 +24,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getDriverProfile, getUserProfile } from '../services/storage';
 import { fetchRoutes, getUniqueLocations, matchRoute } from '../services/sheetService';
-import { saveOfferRidePostLocal } from '../services/dbService';
+import { saveOfferRidePostLocal, parseDepartureTimestamp } from '../services/dbService';
 import { checkAndNotifyMatchingPost } from '../services/notificationService';
 import { openWhatsApp } from '../services/deepLinkService';
 import { DriverProfile, RouteConfig, OfferRidePost } from '../types';
@@ -211,7 +211,7 @@ export default function CreateRideScreen({
         isAC,
         seatsAvailable: parseInt(seatsAvailable, 10) || 3,
         departureTime: departureTime.trim() || '14:00 to 15:00',
-        departureTimestamp: now + 2 * 60 * 60 * 1000,
+        departureTimestamp: parseDepartureTimestamp(departureTime.trim() || '14:00 to 15:00'),
         farePerSeat: calculatedFare,
         createdAt: now,
       };
@@ -465,7 +465,7 @@ export default function CreateRideScreen({
       {/* Interactive Map Location Picker Modal */}
       <MapLocationPickerModal
         visible={modalVisible}
-        title={`Select ${activePicker === 'origin' ? 'Pickup Location' : 'Destination'} on Map`}
+        title={activePicker === 'origin' ? t('selectPickupLocationMap') : t('selectDestinationLocationMap')}
         type={activePicker === 'origin' ? 'from' : 'to'}
         initialCityName={activePicker === 'origin' ? selectedOrigin : selectedDestination}
         onSelectLocation={(locName) => {

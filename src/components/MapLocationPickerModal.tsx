@@ -41,7 +41,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   onClose,
 }) => {
   const { theme } = useTheme();
-  const { getTextStyle } = useLanguage();
+  const { t, getTextStyle } = useLanguage();
 
   const [selectedCoord, setSelectedCoord] = useState<LatLng>({
     latitude: 33.6844,
@@ -133,38 +133,38 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
-            <Icon name="arrow-left" size={20} color="#262A27" />
+        <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+          <TouchableOpacity onPress={onClose} style={[styles.backBtn, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} activeOpacity={0.8}>
+            <Icon name="arrow-left" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8 }}>
-            <Text style={[styles.headerTitle, getTextStyle()]} numberOfLines={1}>
-              {title || 'Select Location on Map'}
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]} numberOfLines={1}>
+              {title || t('selectLocationOnMap')}
             </Text>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              Tap anywhere on the map or search
+            <Text style={[styles.headerSubtitle, { color: theme.textSecondary }, getTextStyle()]} numberOfLines={1}>
+              {t('tapAnywhereMap')}
             </Text>
           </View>
           <View style={{ width: 40 }} />
         </View>
 
         {/* Search Bar Input */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputRow}>
-            <Icon name="search" size={18} color="#8A908B" style={{ marginRight: 8 }} />
+        <View style={[styles.searchContainer, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+          <View style={[styles.searchInputRow, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
+            <Icon name="search" size={18} color={theme.textSecondary} style={{ marginRight: 8 }} />
             <TextInput
-              style={[styles.searchInput, getTextStyle()]}
-              placeholder="Search area, landmark or city in Pakistan..."
-              placeholderTextColor="#8A908B"
+              style={[styles.searchInput, { color: theme.textPrimary }, getTextStyle()]}
+              placeholder={t('searchAreaPlaceholder')}
+              placeholderTextColor={theme.textSecondary}
               value={searchQuery}
               onChangeText={handleSearch}
               autoCorrect={false}
             />
             {searchQuery ? (
               <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
-                <Icon name="close" size={16} color="#8A908B" />
+                <Icon name="close" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -181,6 +181,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
               <TouchableOpacity
                 style={[
                   styles.cityPill,
+                  { backgroundColor: theme.inputBackground, borderColor: theme.border },
                   locationName.toLowerCase().includes(item.name.toLowerCase()) && styles.activeCityPill,
                 ]}
                 onPress={() => {
@@ -192,6 +193,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                 <Text
                   style={[
                     styles.cityPillText,
+                    { color: theme.textPrimary },
                     locationName.toLowerCase().includes(item.name.toLowerCase()) && styles.activeCityPillText,
                     getTextStyle(),
                   ]}
@@ -205,22 +207,22 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
         {/* Autocomplete Results Overlay */}
         {searchResults.length > 0 && (
-          <View style={styles.searchResultsBox}>
+          <View style={[styles.searchResultsBox, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
             <FlatList
               data={searchResults}
               keyExtractor={(item) => String(item.placeId)}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.searchResultItem}
+                  style={[styles.searchResultItem, { borderBottomColor: theme.border }]}
                   onPress={() => handleSelectSearchResult(item)}
                   activeOpacity={0.7}
                 >
                   <Icon name="map-marker" size={18} color="#2F9A3C" style={{ marginRight: 10 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.resultName} numberOfLines={1}>
+                    <Text style={[styles.resultName, { color: theme.textPrimary }, getTextStyle()]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={styles.resultAddress} numberOfLines={2}>
+                    <Text style={[styles.resultAddress, { color: theme.textSecondary }, getTextStyle()]} numberOfLines={2}>
                       {item.displayName}
                     </Text>
                   </View>
@@ -244,33 +246,33 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           {/* Map Instruction Pill */}
           <View style={styles.mapBanner}>
             <Icon name="navigation" size={13} color="#FFFFFF" style={{ marginRight: 5 }} />
-            <Text style={styles.mapBannerText}>
-              {isReverseGeocoding ? 'Detecting address...' : 'Tap map to drop pin'}
+            <Text style={[styles.mapBannerText, getTextStyle()]}>
+              {isReverseGeocoding ? t('detectingAddress') : t('tapMapDropPin')}
             </Text>
           </View>
         </View>
 
         {/* Bottom Floating Selection Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <View style={styles.selectedAddressRow}>
             <View style={[styles.pinIndicator, { backgroundColor: type === 'from' ? '#2F9A3C' : '#E53935' }]}>
               <Icon name={type === 'from' ? 'map-marker' : 'flag-checkered'} size={18} color="#FFFFFF" />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.selectedLabel}>
-                {type === 'from' ? 'PICKUP LOCATION' : 'DROP-OFF DESTINATION'}
+              <Text style={[styles.selectedLabel, { color: theme.textSecondary }, getTextStyle()]}>
+                {type === 'from' ? t('pickupLocationUpper') : t('dropoffDestinationUpper')}
               </Text>
               {isReverseGeocoding ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                   <ActivityIndicator size="small" color="#2F9A3C" />
-                  <Text style={{ fontSize: 13, color: '#8A908B', marginLeft: 6 }}>Finding place...</Text>
+                  <Text style={[{ fontSize: 13, color: theme.textSecondary, marginLeft: 6 }, getTextStyle()]}>{t('findingPlace')}</Text>
                 </View>
               ) : (
-                <Text style={[styles.selectedName, getTextStyle()]} numberOfLines={2}>
+                <Text style={[styles.selectedName, { color: theme.textPrimary }, getTextStyle()]} numberOfLines={2}>
                   {locationName}
                 </Text>
               )}
-              <Text style={styles.coordsText}>
+              <Text style={[styles.coordsText, { color: theme.textSecondary }]}>
                 {selectedCoord.latitude.toFixed(4)}, {selectedCoord.longitude.toFixed(4)}
               </Text>
             </View>
@@ -278,12 +280,12 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
           {/* Confirm Button */}
           <TouchableOpacity
-            style={[styles.confirmBtn, { backgroundColor: type === 'from' ? '#2F9A3C' : '#2F9A3C' }]}
+            style={[styles.confirmBtn, { backgroundColor: '#2F9A3C' }]}
             onPress={handleConfirm}
             activeOpacity={0.85}
           >
             <Icon name="check" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={[styles.confirmBtnText, getTextStyle()]}>Confirm {type === 'from' ? 'Pickup' : 'Destination'}</Text>
+            <Text style={[styles.confirmBtnText, getTextStyle()]}>{t('confirmLocationBtn')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

@@ -39,6 +39,7 @@ import {
   deleteOfferRidePostLocal,
   updateBookRidePostLocal,
   deleteBookRidePostLocal,
+  parseDepartureTimestamp,
 } from '../services/dbService';
 import { fetchRoutes, getUniqueLocations } from '../services/sheetService';
 import { getNotificationsLocal, addNotificationLocal, checkAndNotifyMatchingPost } from '../services/notificationService';
@@ -87,10 +88,18 @@ export default function HomeScreen({
   const [subRoleTab, setSubRoleTab] = useState<'passenger' | 'driver'>(initialRole || userProfile?.activeProfile || 'passenger');
 
   useEffect(() => {
-    if (userProfile?.activeProfile) {
+    if (initialTab) {
+      setMainNavTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (initialRole) {
+      setSubRoleTab(initialRole);
+    } else if (userProfile?.activeProfile) {
       setSubRoleTab(userProfile.activeProfile);
     }
-  }, [userProfile?.activeProfile]);
+  }, [initialRole, userProfile?.activeProfile]);
 
   const handleSubRoleChange = (role: 'passenger' | 'driver') => {
     setSubRoleTab(role);
@@ -503,7 +512,7 @@ export default function HomeScreen({
         passengersCount: parseInt(passengersCount, 10) || 1,
         isAC,
         departureTime,
-        departureTimestamp: now + 2 * 60 * 60 * 1000, // Default 2 hours ahead
+        departureTimestamp: parseDepartureTimestamp(departureTime),
         createdAt: now,
       };
 
@@ -684,10 +693,16 @@ export default function HomeScreen({
       // Decrease available seats in local storage for this ride offer
       const postsRaw = await AsyncStorage.getItem('@local_db_offer_ride_posts');
       if (postsRaw) {
-        const posts: OfferRidePost[] = JSON.parse(postsRaw);
+        let posts: OfferRidePost[] = JSON.parse(postsRaw);
         const postIndex = posts.findIndex((p) => p.id === post.id);
         if (postIndex !== -1) {
-          posts[postIndex].seatsAvailable = Math.max(0, posts[postIndex].seatsAvailable - seatsCount);
+          const remainingSeats = Math.max(0, posts[postIndex].seatsAvailable - seatsCount);
+          if (remainingSeats <= 0) {
+            // Remove completely from active listings as all seats are booked
+            posts = posts.filter((p) => p.id !== post.id);
+          } else {
+            posts[postIndex].seatsAvailable = remainingSeats;
+          }
           await AsyncStorage.setItem('@local_db_offer_ride_posts', JSON.stringify(posts));
         }
       }
@@ -730,13 +745,19 @@ export default function HomeScreen({
       };
       await saveBookingRequestLocal(newRequest);
 
-      // Decrement passenger request required count or mark completed
+      // Decrement passenger request required count or remove if fulfilled
       const bookPostsRaw = await AsyncStorage.getItem('@local_db_book_ride_posts');
       if (bookPostsRaw) {
-        const bPosts: BookRidePost[] = JSON.parse(bookPostsRaw);
+        let bPosts: BookRidePost[] = JSON.parse(bookPostsRaw);
         const bIndex = bPosts.findIndex((p) => p.id === post.id);
         if (bIndex !== -1) {
-          bPosts[bIndex].passengersCount = Math.max(0, (bPosts[bIndex].passengersCount || 1) - 1);
+          const remainingRequired = Math.max(0, (bPosts[bIndex].passengersCount || 1) - 1);
+          if (remainingRequired <= 0) {
+            // Remove completely from active listings as requested seats are fulfilled
+            bPosts = bPosts.filter((p) => p.id !== post.id);
+          } else {
+            bPosts[bIndex].passengersCount = remainingRequired;
+          }
           await AsyncStorage.setItem('@local_db_book_ride_posts', JSON.stringify(bPosts));
         }
       }
@@ -776,7 +797,7 @@ export default function HomeScreen({
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       {/* Top Soft UI Elevated App Bar */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
         {/* Left: User Profile Avatar & Role Tag */}
         <TouchableOpacity
           style={styles.profileHeaderBtn}
@@ -798,19 +819,19 @@ export default function HomeScreen({
             />
           </View>
           <View style={styles.profileTextWrapper}>
-            <Text numberOfLines={1} style={[styles.userNameText, getTextStyle()]}>
+            <Text numberOfLines={1} style={[styles.userNameText, { color: theme.textPrimary, textAlign: 'left' }, getTextStyle({ textAlign: 'left' })]}>
               {userProfile.fullName || 'Welcome, Traveler'}
             </Text>
             <View style={styles.roleTagRow}>
               <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>
-                  {subRoleTab === 'driver' ? 'Driver' : 'Passenger'}
+                <Text style={[styles.roleBadgeText, getTextStyle({ textAlign: 'center' })]}>
+                  {subRoleTab === 'driver' ? t('driver') : t('passenger')}
                 </Text>
               </View>
               {subRoleTab === 'driver' && (
                 <View style={styles.verifiedTag}>
                   <Icon name="check-decagram" size={12} color="#2F9A3C" style={{ marginRight: 2 }} />
-                  <Text style={styles.verifiedTagText}>Verified</Text>
+                  <Text style={[styles.verifiedTagText, getTextStyle({ textAlign: 'left' })]}>{t('verified')}</Text>
                 </View>
               )}
             </View>
@@ -821,7 +842,7 @@ export default function HomeScreen({
         <View style={styles.headerRightActions}>
           {/* Persona Switcher Badge (Passenger <-> Driver) */}
           <TouchableOpacity
-            style={styles.personaSwitchPill}
+            style={[styles.personaSwitchPill, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
             onPress={() => setShowPersonaSwitchModal(true)}
             activeOpacity={0.85}
           >
@@ -830,10 +851,10 @@ export default function HomeScreen({
               size={16}
               color="#2F9A3C"
             />
-            <Text style={styles.personaSwitchText}>
-              {subRoleTab === 'driver' ? 'Driver' : 'Passenger'}
+            <Text style={[styles.personaSwitchText, { color: theme.textPrimary }, getTextStyle()]}>
+              {subRoleTab === 'driver' ? t('driver') : t('passenger')}
             </Text>
-            <Icon name="chevron-down" size={14} color="#262A27" />
+            <Icon name="chevron-down" size={14} color={theme.textPrimary} />
           </TouchableOpacity>
 
           {/* SOS Safety Button */}
@@ -866,11 +887,11 @@ export default function HomeScreen({
 
           {/* Notifications Icon Button */}
           <TouchableOpacity
-            style={styles.notifIconButton}
+            style={[styles.notifIconButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
             onPress={onNavigateToNotifications}
             activeOpacity={0.85}
           >
-            <Icon name="bell-outline" size={18} color="#262A27" />
+            <Icon name="bell-outline" size={18} color={theme.textPrimary} />
             {unreadCount > 0 && (
               <View style={styles.unreadDotBadge} />
             )}
@@ -882,12 +903,12 @@ export default function HomeScreen({
       {mainNavTab === 'dashboard' && (
         <ScrollView contentContainerStyle={styles.feedContainer} showsVerticalScrollIndicator={false}>
           {/* Top Integrated Booking / Post Action Card */}
-          <View style={styles.bookingCard}>
+          <View style={[styles.bookingCard, { backgroundColor: theme.cardBackground }]}>
             <View style={styles.bookingHeaderRow}>
               <View style={styles.bookingTitleRow}>
                 <Icon name="routes" size={18} color="#2F9A3C" />
-                <Text style={[styles.bookingTitleText, getTextStyle()]}>
-                  {subRoleTab === 'driver' ? 'Offer Ride / Post Availability' : 'Find Ride / Post Request'}
+                <Text style={[styles.bookingTitleText, { color: theme.textPrimary }, getTextStyle()]}>
+                  {subRoleTab === 'driver' ? t('offerRideOrPostAvailability') : t('findRideOrPostRequest')}
                 </Text>
               </View>
               {(filterFromCity || filterToCity) && (
@@ -898,7 +919,7 @@ export default function HomeScreen({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.clearBtnText, getTextStyle()]}>Clear</Text>
+                  <Text style={[styles.clearBtnText, { color: theme.textSecondary }, getTextStyle()]}>{t('clearText')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -906,20 +927,20 @@ export default function HomeScreen({
             {/* Soft UI Route Filter Inputs */}
             <View style={styles.routeInputRow}>
               <TouchableOpacity
-                style={styles.routeInputField}
+                style={[styles.routeInputField, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                 onPress={() => setShowFilterFromPicker(true)}
                 activeOpacity={0.85}
               >
                 <Text
                   numberOfLines={1}
                   style={[
-                    filterFromCity ? styles.routeInputText : styles.routeInputPlaceholder,
+                    filterFromCity ? [styles.routeInputText, { color: theme.textPrimary }] : [styles.routeInputPlaceholder, { color: theme.textSecondary }],
                     getTextStyle(),
                   ]}
                 >
                   {filterFromCity || t('fromCity')}
                 </Text>
-                <Icon name="chevron-down" size={16} color="#8A908B" />
+                <Icon name="chevron-down" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
 
               <View style={styles.routeArrowCircle}>
@@ -927,20 +948,20 @@ export default function HomeScreen({
               </View>
 
               <TouchableOpacity
-                style={styles.routeInputField}
+                style={[styles.routeInputField, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                 onPress={() => setShowFilterToPicker(true)}
                 activeOpacity={0.85}
               >
                 <Text
                   numberOfLines={1}
                   style={[
-                    filterToCity ? styles.routeInputText : styles.routeInputPlaceholder,
+                    filterToCity ? [styles.routeInputText, { color: theme.textPrimary }] : [styles.routeInputPlaceholder, { color: theme.textSecondary }],
                     getTextStyle(),
                   ]}
                 >
                   {filterToCity || t('toCity')}
                 </Text>
-                <Icon name="chevron-down" size={16} color="#8A908B" />
+                <Icon name="chevron-down" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -965,12 +986,12 @@ export default function HomeScreen({
 
           {/* Active Trip Banner - Shown only when passenger books a seat with a driver */}
           {subRoleTab === 'passenger' && isPassengerSeatBooked && (
-            <View style={styles.activeTripBanner}>
+            <View style={[styles.activeTripBanner, { backgroundColor: theme.cardBackground, borderColor: '#2F9A3C' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Active Trip</Text>
+                <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>{t('activeTrip')}</Text>
                 <View style={styles.liveTagPill}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2F9A3C', marginRight: 6 }} />
-                  <Text style={{ color: '#2F9A3C', fontSize: 11, fontWeight: '600' }}>Live</Text>
+                  <Text style={[{ color: '#2F9A3C', fontSize: 11, fontWeight: '600' }, getTextStyle()]}>{t('live')}</Text>
                 </View>
               </View>
 
@@ -978,13 +999,13 @@ export default function HomeScreen({
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2F9A3C', marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Islamabad (F-8)</Text>
-                    <Text style={{ fontSize: 11, color: '#2F9A3C', marginLeft: 'auto', fontWeight: '600' }}>02h : 44m</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>Islamabad (F-8)</Text>
+                    <Text style={[{ fontSize: 11, color: '#2F9A3C', marginLeft: 'auto', fontWeight: '600' }, getTextStyle()]}>02h : 44m</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#8A908B', marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Lahore (Thokar)</Text>
-                    <Text style={{ fontSize: 11, color: '#8A908B', marginLeft: 'auto' }}>Dep: 02:00 PM</Text>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.textSecondary, marginRight: 8 }} />
+                    <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>Lahore (Thokar)</Text>
+                    <Text style={[{ fontSize: 11, color: theme.textSecondary, marginLeft: 'auto' }, getTextStyle()]}>{t('departureTime')}: 02:00 PM</Text>
                   </View>
                 </View>
 
@@ -994,18 +1015,18 @@ export default function HomeScreen({
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F3F2', borderRadius: 12, padding: 8, marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.inputBackground, borderRadius: 12, padding: 8, marginTop: 12 }}>
                 <Icon name="car" size={16} color="#2F9A3C" style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 12, color: '#262A27', fontWeight: '600' }}>Honda City AC • LHR-8822</Text>
+                <Text style={[{ fontSize: 12, color: theme.textPrimary, fontWeight: '600' }, getTextStyle()]}>Honda City AC • LHR-8822</Text>
               </View>
             </View>
           )}
 
           {/* Overview Analytics Section Header */}
           <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, getTextStyle()]}>Overview</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('overview')}</Text>
             <TouchableOpacity onPress={() => setShowHistoryModal(true)} activeOpacity={0.7}>
-              <Text style={[styles.sectionActionText, getTextStyle()]}>View details</Text>
+              <Text style={[styles.sectionActionText, getTextStyle()]}>{t('viewDetailsLink')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -1013,23 +1034,23 @@ export default function HomeScreen({
             /* Passenger Mode: 2 Soft UI Elevated Tiles */
             <View style={styles.statsTilesRow}>
               {/* Tile 1: Trips Completed */}
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}>
                 <View style={styles.statIconBadge}>
                   <Icon name="car-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={styles.statValue}>14</Text>
-                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trips Completed</Text>
-                <Text numberOfLines={1} style={styles.statSubText}>+12% this month</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>14</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('totalTripsTaken')}</Text>
+                <Text numberOfLines={1} style={[styles.statSubText, { color: theme.textSecondary }, getTextStyle()]}>+12% {t('thisMonth')}</Text>
               </View>
 
               {/* Tile 2: Safety & Trust Score */}
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}>
                 <View style={styles.statIconBadge}>
                   <Icon name="shield-check" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={styles.statValue}>99%</Text>
-                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trust Score</Text>
-                <Text numberOfLines={1} style={styles.statSubText}>Verified Traveler</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>99%</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('trustScore')}</Text>
+                <Text numberOfLines={1} style={[styles.statSubText, { color: theme.textSecondary }, getTextStyle()]}>{t('verifiedTraveler')}</Text>
               </View>
             </View>
           ) : (
@@ -1037,55 +1058,55 @@ export default function HomeScreen({
             <View style={styles.statsTilesRow}>
               {/* Tile 1: Driver Earnings */}
               <TouchableOpacity
-                style={styles.statTile3}
+                style={[styles.statTile3, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setShowEarningsModal(true)}
                 activeOpacity={0.85}
               >
                 <View style={styles.statIconBadge}>
                   <Icon name="cash-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text numberOfLines={1} style={styles.statValue}>Rs 23k</Text>
-                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Earnings</Text>
-                <Text numberOfLines={1} style={styles.statSubText}>Tap for log</Text>
+                <Text numberOfLines={1} style={[styles.statValue, { color: theme.textPrimary }]}>{t('rs')} 23k</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('earnings')}</Text>
+                <Text numberOfLines={1} style={[styles.statSubText, { color: theme.textSecondary }, getTextStyle()]}>{t('tapForLog')}</Text>
               </TouchableOpacity>
 
               {/* Tile 2: Trips Completed */}
-              <View style={styles.statTile3}>
+              <View style={[styles.statTile3, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}>
                 <View style={styles.statIconBadge}>
                   <Icon name="car-multiple" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={styles.statValue}>14</Text>
-                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trips</Text>
-                <Text numberOfLines={1} style={styles.statSubText}>+12% month</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>14</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('trips')}</Text>
+                <Text numberOfLines={1} style={[styles.statSubText, { color: theme.textSecondary }, getTextStyle()]}>+12% {t('thisMonth')}</Text>
               </View>
 
               {/* Tile 3: Driver Trust Score */}
               <TouchableOpacity
-                style={styles.statTile3}
+                style={[styles.statTile3, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setShowHistoryModal(true)}
                 activeOpacity={0.85}
               >
                 <View style={styles.statIconBadge}>
                   <Icon name="shield-check" size={18} color="#2F9A3C" />
                 </View>
-                <Text style={styles.statValue}>99%</Text>
-                <Text numberOfLines={1} style={[styles.statLabel, getTextStyle()]}>Trust</Text>
-                <Text numberOfLines={1} style={styles.statSubText}>⭐ 4.9 (32)</Text>
+                <Text style={[styles.statValue, { color: theme.textPrimary }]}>99%</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('trust')}</Text>
+                <Text numberOfLines={1} style={[styles.statSubText, { color: theme.textSecondary }, getTextStyle()]}>⭐ 4.9 (32)</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {/* Quick Saved Routes Hub (Role specific: Passenger vs Driver) */}
           <View style={{
-            backgroundColor: '#FFFFFF',
+            backgroundColor: theme.cardBackground,
             borderRadius: 20,
             padding: 16,
             marginBottom: 16,
             borderWidth: 1,
-            borderColor: '#E3E7E3',
+            borderColor: theme.border,
             ...Platform.select({
               ios: {
-                shadowColor: '#262A27',
+                shadowColor: '#000000',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.08,
                 shadowRadius: 10,
@@ -1096,11 +1117,11 @@ export default function HomeScreen({
             }),
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                Quick Saved Routes
+              <Text style={[{ fontSize: 14, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                {t('quickSavedRoutes')}
               </Text>
               <TouchableOpacity onPress={() => setShowAddRouteModal(true)} activeOpacity={0.8}>
-                <Text style={[{ fontSize: 12, color: '#2F9A3C', fontWeight: '600' }, getTextStyle()]}>Add New</Text>
+                <Text style={[{ fontSize: 12, color: '#2F9A3C', fontWeight: '600' }, getTextStyle()]}>{t('addNew')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1109,8 +1130,8 @@ export default function HomeScreen({
                 <TouchableOpacity
                   key={routeItem.id}
                   style={{
-                    backgroundColor: '#FFFFFF',
-                    borderColor: '#E3E7E3',
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.border,
                     borderWidth: 1,
                     borderRadius: 14,
                     paddingVertical: 12,
@@ -1123,7 +1144,7 @@ export default function HomeScreen({
                   onPress={() => handleSelectQuickRoute(routeItem.from, routeItem.to)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
                     {routeItem.from} ➔ {routeItem.to}
                   </Text>
                 </TouchableOpacity>
@@ -1133,15 +1154,15 @@ export default function HomeScreen({
 
           {/* Recent Trip History Feed (Role specific: Passenger vs Driver) */}
           <View style={{
-            backgroundColor: '#FFFFFF',
+            backgroundColor: theme.cardBackground,
             borderRadius: 20,
             padding: 16,
             marginBottom: 24,
             borderWidth: 1,
-            borderColor: '#E3E7E3',
+            borderColor: theme.border,
             ...Platform.select({
               ios: {
-                shadowColor: '#262A27',
+                shadowColor: '#000000',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.08,
                 shadowRadius: 10,
@@ -1152,15 +1173,15 @@ export default function HomeScreen({
             }),
           }}>
             <View style={{ marginBottom: 12 }}>
-              <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                Recent Completed Trip
+              <Text style={[{ fontSize: 14, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                {t('recentCompletedTrip')}
               </Text>
             </View>
 
             {subRoleTab === 'passenger' ? (
               /* Recent Completed Trip for PASSENGER - Click to view on OSM Live Map */
               <TouchableOpacity
-                style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
+                style={{ backgroundColor: theme.inputBackground, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
                 onPress={() => {
                   if (onNavigateToTripViewer) {
                     onNavigateToTripViewer({
@@ -1189,17 +1210,17 @@ export default function HomeScreen({
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Islamabad ➔ Multan</Text>
                     <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>🗺️ View Map</Text>
+                      <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('viewMap')}</Text>
                     </View>
                   </View>
-                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Driver: Usman Khan • Fare: Rs. 2,200</Text>
-                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>22 Jul 2026 • 01:30 PM (Tap to view route)</Text>
+                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>{t('driver')}: Usman Khan • {t('fare')}: {t('rs')} 2,200</Text>
+                  <Text style={[{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>22 Jul 2026 • 01:30 PM ({t('tapToViewRoute')})</Text>
                 </View>
               </TouchableOpacity>
             ) : (
               /* Recent Completed Trip for DRIVER - Click to view on OSM Live Map */
               <TouchableOpacity
-                style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
+                style={{ backgroundColor: theme.inputBackground, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center' }}
                 onPress={() => {
                   if (onNavigateToTripViewer) {
                     onNavigateToTripViewer({
@@ -1228,11 +1249,11 @@ export default function HomeScreen({
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Lahore ➔ Islamabad</Text>
                     <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                      <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>🗺️ View Map</Text>
+                      <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('viewMap')}</Text>
                     </View>
                   </View>
-                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>Passenger: Ali Raza • Fare Collected: Rs. 1,800</Text>
-                  <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>18 Jul 2026 • 09:00 AM (Tap to view route)</Text>
+                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>{t('passenger')}: Ali Raza • {t('fare')}: {t('rs')} 1,800</Text>
+                  <Text style={[{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>18 Jul 2026 • 09:00 AM ({t('tapToViewRoute')})</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -1246,17 +1267,17 @@ export default function HomeScreen({
           {/* Unverified User Prompt */}
           {!(userProfile?.isVerified || (userProfile?.verification?.isCNICVerified && userProfile?.verification?.phoneVerified !== false)) && (
             <View style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.cardBackground,
               borderRadius: 20,
               padding: 16,
               borderWidth: 1,
-              borderColor: '#E3E7E3',
+              borderColor: theme.border,
               marginBottom: 16,
               flexDirection: 'row',
               alignItems: 'center',
               ...Platform.select({
                 ios: {
-                  shadowColor: '#262A27',
+                  shadowColor: '#000000',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.08,
                   shadowRadius: 10,
@@ -1278,11 +1299,11 @@ export default function HomeScreen({
                 <Icon name="shield-check" size={20} color="#2F9A3C" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                  Account Verification Required
+                <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                  {t('accountVerificationRequired')}
                 </Text>
-                <Text style={[{ fontSize: 11, color: '#8A908B', marginTop: 2 }, getTextStyle()]}>
-                  Verify your account in Profile to unlock full live rides and seat booking features.
+                <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>
+                  {t('accountVerificationDesc')}
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -1296,7 +1317,7 @@ export default function HomeScreen({
                   onPress={onNavigateToProfile}
                   activeOpacity={0.85}
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Verify Account Now</Text>
+                  <Text style={[{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, getTextStyle()]}>{t('verifyAccountNow')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1307,16 +1328,16 @@ export default function HomeScreen({
             {subRoleTab === 'passenger' ? (
               offerPosts.length === 0 ? (
                 <View style={{
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.cardBackground,
                   borderRadius: 20,
                   padding: 24,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   ...Platform.select({
                     ios: {
-                      shadowColor: '#262A27',
+                      shadowColor: '#000000',
                       shadowOffset: { width: 0, height: 4 },
                       shadowOpacity: 0.06,
                       shadowRadius: 10,
@@ -1326,8 +1347,8 @@ export default function HomeScreen({
                     },
                   }),
                 }}>
-                  <Icon name="car-off" size={40} color="#8A908B" />
-                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27', marginTop: 8 }, getTextStyle()]}>
+                  <Icon name="car-off" size={40} color={theme.textSecondary} />
+                  <Text style={[{ fontSize: 14, fontWeight: '600', color: theme.textPrimary, marginTop: 8 }, getTextStyle()]}>
                     {t('noRidesFound')}
                   </Text>
                 </View>
@@ -1372,51 +1393,51 @@ export default function HomeScreen({
                                 {post.driverName}
                               </Text>
                               <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
-                                <Text style={{ fontSize: 9, fontWeight: '800', color: '#2E7D32' }}>✓ Verified</Text>
+                                <Text style={[{ fontSize: 9, fontWeight: '800', color: '#2E7D32' }, getTextStyle()]}>✓ {t('verified')}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>⭐ 4.9 Driver • Live Feed</Text>
+                            <Text style={[{ fontSize: 10, color: theme.textSecondary, marginTop: 1 }, getTextStyle()]}>⭐ 4.9 {t('driver')} • {t('liveFeed')}</Text>
                           </View>
                         </View>
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           {isMine && (
                             <View style={{ backgroundColor: '#1B3E1E', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>MY POST</Text>
+                              <Text style={[{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('myPost')}</Text>
                             </View>
                           )}
                           <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                            <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Live ⚡</Text>
+                            <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('live')} ⚡</Text>
                           </View>
                         </View>
                       </View>
 
                       {/* Route Banner Box */}
-                      <View style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                      <View style={{ backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                           <Text style={[{ fontSize: 14, fontWeight: '800', color: '#1B3E1E', flex: 1, marginRight: 8 }, getTextStyle()]}>
                             {post.fromCity} ➔ {post.toCity}
                           </Text>
                           <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                            <Text style={{ fontSize: 13, fontWeight: '900', color: '#2E7D32' }}>
-                              Rs. {post.farePerSeat.toLocaleString()} <Text style={{ fontSize: 10, fontWeight: '600' }}>/ seat</Text>
+                            <Text style={[{ fontSize: 13, fontWeight: '900', color: '#2E7D32' }, getTextStyle()]}>
+                              {t('rs')} {post.farePerSeat.toLocaleString()} <Text style={[{ fontSize: 10, fontWeight: '600' }, getTextStyle()]}>/ {t('seats')}</Text>
                             </Text>
                           </View>
                         </View>
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
                           <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>
-                            🕒 Dep: {post.departureTime}
+                            🕒 {t('departureTime')}: {post.departureTime}
                           </Text>
                           <Text style={[{ fontSize: 11, fontWeight: '800', color: post.seatsAvailable > 0 ? '#16A34A' : '#DC2626' }, getTextStyle()]}>
-                            {post.seatsAvailable} Seat{post.seatsAvailable > 1 ? 's' : ''} Left
+                            {post.seatsAvailable} {t('seats')} {t('seatsLeft')}
                           </Text>
                         </View>
                       </View>
 
                       {/* Action Row */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={{ fontSize: 11, color: '#6B7280' }}>🚗 {post.vehicleDetails}</Text>
+                        <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>🚗 {post.vehicleDetails}</Text>
                         <TouchableOpacity
                           style={{ backgroundColor: '#2E7D32', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                           onPress={() => {
@@ -1424,7 +1445,7 @@ export default function HomeScreen({
                             setSelectedRideDetail(post);
                           }}
                         >
-                          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>View Live Details ➔</Text>
+                          <Text style={[{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }, getTextStyle()]}>{t('viewLiveDetails')}</Text>
                         </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
@@ -1434,16 +1455,16 @@ export default function HomeScreen({
             ) : (
               bookPosts.length === 0 ? (
                 <View style={{
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.cardBackground,
                   borderRadius: 20,
                   padding: 24,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   ...Platform.select({
                     ios: {
-                      shadowColor: '#262A27',
+                      shadowColor: '#000000',
                       shadowOffset: { width: 0, height: 4 },
                       shadowOpacity: 0.06,
                       shadowRadius: 10,
@@ -1453,9 +1474,9 @@ export default function HomeScreen({
                     },
                   }),
                 }}>
-                  <Icon name="account-search" size={40} color="#8A908B" />
-                  <Text style={[{ fontSize: 14, fontWeight: '600', color: '#262A27', marginTop: 8 }, getTextStyle()]}>
-                    {isUrdu ? 'کوئی درخواست نہیں ملی' : 'No Passenger Requests Found'}
+                  <Icon name="account-search" size={40} color={theme.textSecondary} />
+                  <Text style={[{ fontSize: 14, fontWeight: '600', color: theme.textPrimary, marginTop: 8 }, getTextStyle()]}>
+                    {t('noPassengerRequestsFound')}
                   </Text>
                 </View>
               ) : (
@@ -1496,16 +1517,16 @@ export default function HomeScreen({
                                 {post.passengerName}
                               </Text>
                               <View style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
-                                <Text style={{ fontSize: 9, fontWeight: '800', color: '#E65100' }}>Passenger Request</Text>
+                                <Text style={[{ fontSize: 9, fontWeight: '800', color: '#E65100' }, getTextStyle()]}>{t('passengerRequest')}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>⭐ 4.9 Passenger • Live Request</Text>
+                            <Text style={[{ fontSize: 10, color: theme.textSecondary, marginTop: 1 }, getTextStyle()]}>⭐ 4.9 {t('passenger')} • {t('liveRequest')}</Text>
                           </View>
                         </View>
 
                         {isMine && (
                           <View style={{ backgroundColor: '#1B3E1E', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                            <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>MY REQUEST</Text>
+                            <Text style={[{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('myRequest')}</Text>
                           </View>
                         )}
                       </View>
@@ -1516,17 +1537,17 @@ export default function HomeScreen({
                           {post.fromCity} ➔ {post.toCity}
                         </Text>
                         <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>
-                          🕒 Requested Dep Time: {post.departureTime}
+                          🕒 {t('departureTime')}: {post.departureTime}
                         </Text>
                       </View>
 
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={{ fontSize: 11, color: '#6B7280' }}>🧳 Seat Request Live</Text>
+                        <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>🧳 {t('passengerRequest')}</Text>
                         <TouchableOpacity
                           style={{ backgroundColor: '#E65100', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                           onPress={() => setSelectedSeatDetail(post)}
                         >
-                          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Accept Request ➔</Text>
+                          <Text style={[{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }, getTextStyle()]}>{t('acceptRequest')}</Text>
                         </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
@@ -1544,8 +1565,8 @@ export default function HomeScreen({
 
       {/* Full Screen Book Ride / Seat Request Form Modal (Mockup Image 5) */}
       <Modal visible={showBookFormModal} animationType="slide" transparent={false} onRequestClose={() => setShowBookFormModal(false)}>
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F2F3F2' }]}>
-          <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+          <StatusBar barStyle={theme.statusBar} backgroundColor={theme.background} />
           {/* Header */}
           <View style={{
             flexDirection: 'row',
@@ -1553,12 +1574,12 @@ export default function HomeScreen({
             justifyContent: 'space-between',
             paddingHorizontal: 20,
             paddingVertical: 12,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: theme.cardBackground,
             borderBottomWidth: 1,
-            borderBottomColor: '#E3E7E3',
+            borderBottomColor: theme.border,
             ...Platform.select({
               ios: {
-                shadowColor: '#262A27',
+                shadowColor: '#000000',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.06,
                 shadowRadius: 10,
@@ -1573,18 +1594,18 @@ export default function HomeScreen({
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.inputBackground,
                 justifyContent: 'center',
                 alignItems: 'center',
                 borderWidth: 1,
-                borderColor: '#E3E7E3',
+                borderColor: theme.border,
               }}
               onPress={() => setShowBookFormModal(false)}
               activeOpacity={0.8}
             >
-              <Icon name="arrow-left" size={20} color="#262A27" />
+              <Icon name="arrow-left" size={20} color={theme.textPrimary} />
             </TouchableOpacity>
-            <Text style={[{ fontSize: 18, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
+            <Text style={[{ fontSize: 18, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
               {t('postSeatRequestBtn')}
             </Text>
             <View style={{ width: 44 }} />
@@ -1593,23 +1614,23 @@ export default function HomeScreen({
           <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
             {/* Route & Locations Card */}
             <View style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.cardBackground,
               borderRadius: 20,
               padding: 16,
               borderWidth: 1,
-              borderColor: '#E3E7E3',
+              borderColor: theme.border,
               marginBottom: 16,
             }}>
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#2F9A3C', marginBottom: 10, letterSpacing: 0.5 }, getTextStyle()]}>ROUTE & LOCATIONS</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#2F9A3C', marginBottom: 10, letterSpacing: 0.5 }, getTextStyle()]}>{t('routeAndLocations')}</Text>
 
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('fromCity')}</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: theme.textPrimary, marginBottom: 6 }, getTextStyle()]}>{t('fromCity')}</Text>
               <TouchableOpacity
                 style={{
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -1621,37 +1642,37 @@ export default function HomeScreen({
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                   <Icon name="map-marker" size={18} color="#2F9A3C" style={{ marginRight: 8 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookFrom ? '#262A27' : '#8A908B' }, getTextStyle()]}>
+                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookFrom ? theme.textPrimary : theme.textSecondary }, getTextStyle()]}>
                     {bookFrom || t('selectDepartureCity')}
                   </Text>
                 </View>
-                <Icon name="chevron-down" size={18} color="#8A908B" />
+                <Icon name="chevron-down" size={18} color={theme.textSecondary} />
               </TouchableOpacity>
 
               <TextInput
                 style={[{
                   height: 44,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   fontSize: 13,
-                  color: '#262A27',
+                  color: theme.textPrimary,
                   marginBottom: 14,
                 }, getTextStyle()]}
-                placeholder="Landmark/Pickup details (e.g. Metro Pole, Gate 3)"
-                placeholderTextColor="#8A908B"
+                placeholder={t('landmarkPickupPlaceholder')}
+                placeholderTextColor={theme.textSecondary}
               />
 
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('toCity')}</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: theme.textPrimary, marginBottom: 6 }, getTextStyle()]}>{t('toCity')}</Text>
               <TouchableOpacity
                 style={{
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -1663,42 +1684,42 @@ export default function HomeScreen({
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                   <Icon name="map-marker" size={18} color="#2F9A3C" style={{ marginRight: 8 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookTo ? '#262A27' : '#8A908B' }, getTextStyle()]}>
+                  <Text style={[{ fontSize: 13, fontWeight: '500', color: bookTo ? theme.textPrimary : theme.textSecondary }, getTextStyle()]}>
                     {bookTo || t('selectDestinationCity')}
                   </Text>
                 </View>
-                <Icon name="chevron-down" size={18} color="#8A908B" />
+                <Icon name="chevron-down" size={18} color={theme.textSecondary} />
               </TouchableOpacity>
 
               <TextInput
                 style={[{
                   height: 44,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   fontSize: 13,
-                  color: '#262A27',
+                  color: theme.textPrimary,
                   marginBottom: 14,
                 }, getTextStyle()]}
-                placeholder="Dropoff details (e.g. Block 5, next to mall)"
-                placeholderTextColor="#8A908B"
+                placeholder={t('dropoffDetailsPlaceholder')}
+                placeholderTextColor={theme.textSecondary}
               />
 
               {/* Air Conditioning Toggle */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 10 }}>
                 <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>Air Conditioning (AC)</Text>
-                  <Text style={[{ fontSize: 11, color: '#8A908B', marginTop: 2 }, getTextStyle()]}>Enable AC premium tier pricing</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>{t('acStatus')}</Text>
+                  <Text style={[{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }, getTextStyle()]}>{t('enableACDesc')}</Text>
                 </View>
                 <TouchableOpacity
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: isAC ? 'rgba(47, 154, 60, 0.12)' : '#F2F3F2',
+                    backgroundColor: isAC ? 'rgba(47, 154, 60, 0.12)' : theme.inputBackground,
                     borderWidth: 1.5,
-                    borderColor: isAC ? '#2F9A3C' : '#D1D5D1',
+                    borderColor: isAC ? '#2F9A3C' : theme.border,
                     paddingHorizontal: 14,
                     paddingVertical: 8,
                     borderRadius: 14,
@@ -1706,118 +1727,118 @@ export default function HomeScreen({
                   onPress={() => setIsAC((prev) => !prev)}
                   activeOpacity={0.7}
                 >
-                  <Icon name={isAC ? 'snowflake' : 'fan'} size={16} color={isAC ? '#2F9A3C' : '#8A908B'} />
-                  <Text style={{ marginLeft: 6, fontWeight: '700', fontSize: 13, color: isAC ? '#2F9A3C' : '#8A908B' }}>
-                    {isAC ? 'AC Premium' : 'Non-AC'}
+                  <Icon name={isAC ? 'snowflake' : 'fan'} size={16} color={isAC ? '#2F9A3C' : theme.textSecondary} />
+                  <Text style={[{ marginLeft: 6, fontWeight: '700', fontSize: 13, color: isAC ? '#2F9A3C' : theme.textSecondary }, getTextStyle()]}>
+                    {isAC ? t('acPremiumTier') : t('nonACStandardTier')}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginTop: 8, marginBottom: 6 }, getTextStyle()]}>Number of Passengers *</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: theme.textPrimary, marginTop: 8, marginBottom: 6 }, getTextStyle()]}>{t('passengersCountRequired')}</Text>
               <TextInput
-                style={{
+                style={[{
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   fontSize: 13,
-                  color: '#262A27',
+                  color: theme.textPrimary,
                   marginBottom: 10,
-                }}
+                }, getTextStyle()]}
                 keyboardType="numeric"
                 value={passengersCount}
                 onChangeText={setPassengersCount}
               />
 
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>Number of Bags</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: theme.textPrimary, marginBottom: 6 }, getTextStyle()]}>{t('numberOfBags')}</Text>
               <TextInput
-                style={{
+                style={[{
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   fontSize: 13,
-                  color: '#262A27',
+                  color: theme.textPrimary,
                   marginBottom: 10,
-                }}
+                }, getTextStyle()]}
                 keyboardType="numeric"
                 value={bagsCount}
                 onChangeText={setBagsCount}
               />
 
-              <Text style={[{ fontSize: 12, fontWeight: '600', color: '#262A27', marginBottom: 6 }, getTextStyle()]}>{t('departureTime')}</Text>
+              <Text style={[{ fontSize: 12, fontWeight: '600', color: theme.textPrimary, marginBottom: 6 }, getTextStyle()]}>{t('departureTimeRequired')}</Text>
               <TextInput
-                style={{
+                style={[{
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   paddingHorizontal: 14,
                   fontSize: 13,
-                  color: '#262A27',
-                }}
+                  color: theme.textPrimary,
+                }, getTextStyle()]}
                 value={departureTime}
                 onChangeText={setDepartureTime}
               />
 
               {/* Dynamic Distance-based Fare Summary */}
               <View style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.inputBackground,
                 borderRadius: 18,
                 padding: 16,
                 marginTop: 14,
                 borderWidth: 1,
-                borderColor: '#E3E7E3',
+                borderColor: theme.border,
               }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Text style={[{ fontSize: 11, fontWeight: '700', color: '#2F9A3C', letterSpacing: 0.5 }, getTextStyle()]}>
-                    FARE SUMMARY (LIVE FORMULA)
+                    {t('fareSummaryLiveFormula')}
                   </Text>
                   {bookFareBreakdown && (
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#2F9A3C' }}>
+                    <Text style={[{ fontSize: 11, fontWeight: '700', color: '#2F9A3C' }, getTextStyle()]}>
                       🛣️ {bookFareBreakdown.distanceKm} KM
                     </Text>
                   )}
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Tier Option:</Text>
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                    {isAC ? 'AC Premium' : 'Non-AC Standard'}
+                  <Text style={[{ fontSize: 13, color: theme.textSecondary }, getTextStyle()]}>{t('tierOption')}</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                    {isAC ? t('acPremiumTier') : t('nonACStandardTier')}
                   </Text>
                 </View>
                 {bookFareBreakdown && (
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Fuel Rate:</Text>
-                    <Text style={[{ fontSize: 13, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                      Rs. {bookFareBreakdown.fuelPricePerLiter} / L
+                    <Text style={[{ fontSize: 13, color: theme.textSecondary }, getTextStyle()]}>{t('fuelRate')}</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                      {t('rs')} {bookFareBreakdown.fuelPricePerLiter} / L
                     </Text>
                   </View>
                 )}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                  <Text style={[{ fontSize: 13, color: '#8A908B' }, getTextStyle()]}>Fare rate per seat:</Text>
-                  <Text style={[{ fontSize: 14, fontWeight: '700', color: '#262A27' }]}>
+                  <Text style={[{ fontSize: 13, color: theme.textSecondary }, getTextStyle()]}>{t('ratePerSeat')}</Text>
+                  <Text style={[{ fontSize: 14, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>
                     {isCalculatingBookFare
-                      ? 'Calculating...'
+                      ? t('calculating')
                       : bookFareBreakdown
-                        ? `Rs. ${bookFareBreakdown.perHeadFixedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-                        : 'Rs. 0.00'}
+                        ? `${t('rs')} ${bookFareBreakdown.perHeadFixedFare.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                        : `${t('rs')} 0.00`}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderColor: '#F2F3F2' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderColor: theme.border }}>
                   <Text style={[{ fontSize: 14, fontWeight: '700', color: '#2F9A3C' }, getTextStyle()]}>
-                    Total Est. Fare ({parseInt(passengersCount, 10) || 1} Seat{(parseInt(passengersCount, 10) || 1) > 1 ? 's' : ''}):
+                    {t('totalEstFare')} ({parseInt(passengersCount, 10) || 1} {t('seats')}):
                   </Text>
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#2F9A3C' }}>
+                  <Text style={[{ fontSize: 18, fontWeight: '900', color: '#2F9A3C' }, getTextStyle()]}>
                     {isCalculatingBookFare
-                      ? 'Calculating...'
+                      ? t('calculating')
                       : bookFareBreakdown
-                        ? `Rs. ${(bookFareBreakdown.perHeadFixedFare * (parseInt(passengersCount, 10) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-                        : 'Rs. 0.00'}
+                        ? `${t('rs')} ${(bookFareBreakdown.perHeadFixedFare * (parseInt(passengersCount, 10) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                        : `${t('rs')} 0.00`}
                   </Text>
                 </View>
               </View>
@@ -1857,7 +1878,7 @@ export default function HomeScreen({
           {/* Dedicated Map Location Picker for Booking Modal Origin */}
           <MapLocationPickerModal
             visible={showBookFromPicker}
-            title="Select Pickup Location on Map"
+            title={t('selectPickupLocationMap')}
             type="from"
             initialCityName={bookFrom || userProfile?.city || 'Islamabad'}
             onSelectLocation={(locName, coords) => {
@@ -1871,7 +1892,7 @@ export default function HomeScreen({
           {/* Dedicated Map Location Picker for Booking Modal Destination */}
           <MapLocationPickerModal
             visible={showBookToPicker}
-            title="Select Destination on Map"
+            title={t('selectDestinationLocationMap')}
             type="to"
             initialCityName={bookTo || 'Rawalpindi'}
             onSelectLocation={(locName, coords) => {
@@ -1908,13 +1929,13 @@ export default function HomeScreen({
               <ScrollView showsVerticalScrollIndicator={false}>
                 {/* OFFICIAL HELPLINES SECTION */}
                 <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.primary, marginBottom: 8 }, getTextStyle()]}>
-                  OFFICIAL NATIONAL HELPLINES 🇵🇰
+                  {t('officialNationalHelplines')}
                 </Text>
 
                 {/* 15 Police Helpline */}
                 <View style={[styles.emergencyCardDefault, { backgroundColor: theme.inputBackground, borderColor: theme.border, marginBottom: 8 }]}>
                   <View>
-                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'پولیس ایمرجنسی ہیلپ لائن' : 'Police Emergency Helpline'}</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('policeHelplineName')}</Text>
                     <Text style={[{ fontSize: 15, fontWeight: '800', color: '#D32F2F', marginTop: 2 }]}>15</Text>
                   </View>
                   <View style={{ flexDirection: 'row' }}>
@@ -1930,7 +1951,7 @@ export default function HomeScreen({
                 {/* 130 NHMP Motorway Police */}
                 <View style={[styles.emergencyCardDefault, { backgroundColor: theme.inputBackground, borderColor: theme.border, marginBottom: 8 }]}>
                   <View>
-                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'موٹروے پولیس ہیلپ لائن' : 'NHMP Motorway Police'}</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('nhmpHelplineName')}</Text>
                     <Text style={[{ fontSize: 15, fontWeight: '800', color: theme.primary, marginTop: 2 }]}>130</Text>
                   </View>
                   <TouchableOpacity style={[styles.callIconBtn, { backgroundColor: theme.primary }]} onPress={() => handleTriggerEmergencyCall('130')}>
@@ -1941,7 +1962,7 @@ export default function HomeScreen({
                 {/* 1122 Rescue Ambulance */}
                 <View style={[styles.emergencyCardDefault, { backgroundColor: theme.inputBackground, borderColor: theme.border, marginBottom: 12 }]}>
                   <View>
-                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{isUrdu ? 'ریسکیو 1122 ایمبولینس' : 'Rescue 1122 Ambulance'}</Text>
+                    <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('rescueHelplineName')}</Text>
                     <Text style={[{ fontSize: 15, fontWeight: '800', color: theme.primary, marginTop: 2 }]}>1122</Text>
                   </View>
                   <TouchableOpacity style={[styles.callIconBtn, { backgroundColor: theme.primary }]} onPress={() => handleTriggerEmergencyCall('1122')}>
@@ -1952,10 +1973,10 @@ export default function HomeScreen({
                 {/* USER'S PERSONAL EMERGENCY CONTACTS (UP TO 3) */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 8 }}>
                   <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.primary }, getTextStyle()]}>
-                    PERSONAL CONTACTS (UP TO 3)
+                    {t('personalContactsHeading')}
                   </Text>
                   <TouchableOpacity onPress={() => { setShowEmergencyModal(false); onNavigateToProfile(); }}>
-                    <Text style={[{ fontSize: 11, fontWeight: '700', color: theme.primary }, getTextStyle()]}>+ Edit in Profile</Text>
+                    <Text style={[{ fontSize: 11, fontWeight: '700', color: theme.primary }, getTextStyle()]}>{t('editInProfile')}</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1983,7 +2004,7 @@ export default function HomeScreen({
                 ) : (
                   <View style={[styles.emergencyCardDefault, { backgroundColor: theme.inputBackground, borderColor: theme.border, marginBottom: 8 }]}>
                     <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>
-                      No personal contacts added yet. Tap "+ Edit in Profile" to add up to 3 contacts.
+                      {t('noPersonalContactsYet')}
                     </Text>
                   </View>
                 )}
@@ -2005,7 +2026,7 @@ export default function HomeScreen({
       {/* Interactive Map Location Picker for Home Screen Feed Filters */}
       <MapLocationPickerModal
         visible={showFilterFromPicker}
-        title="Select Filter Departure City"
+        title={t('selectFilterDepartureCity')}
         type="from"
         initialCityName={filterFromCity || userProfile?.city || 'Islamabad'}
         onSelectLocation={(locName) => {
@@ -2017,7 +2038,7 @@ export default function HomeScreen({
 
       <MapLocationPickerModal
         visible={showFilterToPicker}
-        title="Select Filter Destination City"
+        title={t('selectFilterDestinationCity')}
         type="to"
         initialCityName={filterToCity || 'Rawalpindi'}
         onSelectLocation={(locName) => {
@@ -2035,36 +2056,36 @@ export default function HomeScreen({
           onPress={() => setEditingOfferPost(null)}
         >
           <TouchableWithoutFeedback>
-            <View style={styles.modalContainer}>
-              <Text style={styles.modalTitle}>Modify Ride Offer</Text>
-              <Text style={{ fontSize: 13, color: '#43A047', fontWeight: '700', marginBottom: 12 }}>
+            <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('modifyRideOffer')}</Text>
+              <Text style={[{ fontSize: 13, color: '#43A047', fontWeight: '700', marginBottom: 12 }, getTextStyle()]}>
                 {editingOfferPost?.fromCity} ➔ {editingOfferPost?.toCity}
               </Text>
 
               <ScrollView style={{ maxHeight: 380 }}>
-                <Text style={styles.label}>Seats Available *</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={editOfferSeats} onChangeText={setEditOfferSeats} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('seatsCountRequired')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} keyboardType="numeric" value={editOfferSeats} onChangeText={setEditOfferSeats} />
 
-                <Text style={styles.label}>Fare Per Seat (Rs.) *</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={editOfferFare} onChangeText={setEditOfferFare} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('farePerSeatRequired')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} keyboardType="numeric" value={editOfferFare} onChangeText={setEditOfferFare} />
 
-                <Text style={styles.label}>Departure Time *</Text>
-                <TextInput style={styles.input} value={editOfferTime} onChangeText={setEditOfferTime} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('departureTimeRequired')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} value={editOfferTime} onChangeText={setEditOfferTime} />
 
-                <TouchableOpacity style={styles.toggleACBtn} onPress={() => setEditOfferAC(!editOfferAC)}>
+                <TouchableOpacity style={[styles.toggleACBtn, { backgroundColor: theme.inputBackground }]} onPress={() => setEditOfferAC(!editOfferAC)}>
                   <Icon name={editOfferAC ? 'snowflake' : 'fan'} size={20} color={editOfferAC ? '#43A047' : '#E65100'} />
-                  <Text style={{ marginLeft: 8, fontWeight: '700' }}>
-                    Vehicle AC: {editOfferAC ? 'Air Conditioned (AC)' : 'Non-AC'}
+                  <Text style={[{ marginLeft: 8, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>
+                    {t('acStatus')}: {editOfferAC ? t('acAvailable') : t('nonAC')}
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingOfferPost(null)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                  <Text style={[styles.cancelBtnText, { color: theme.textSecondary }, getTextStyle()]}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveEditOffer}>
-                  <Text style={styles.confirmBtnText}>Save Changes</Text>
+                  <Text style={[styles.confirmBtnText, getTextStyle()]}>{t('saveChanges')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2080,36 +2101,36 @@ export default function HomeScreen({
           onPress={() => setEditingBookPost(null)}
         >
           <TouchableWithoutFeedback>
-            <View style={styles.modalContainer}>
-              <Text style={styles.modalTitle}>Modify Seat Request</Text>
-              <Text style={{ fontSize: 13, color: '#E65100', fontWeight: '700', marginBottom: 12 }}>
+            <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('modifySeatRequest')}</Text>
+              <Text style={[{ fontSize: 13, color: '#E65100', fontWeight: '700', marginBottom: 12 }, getTextStyle()]}>
                 {editingBookPost?.fromCity} ➔ {editingBookPost?.toCity}
               </Text>
 
               <ScrollView style={{ maxHeight: 380 }}>
-                <Text style={styles.label}>Number of Passengers *</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={editBookPassengers} onChangeText={setEditBookPassengers} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('passengersCountRequired')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} keyboardType="numeric" value={editBookPassengers} onChangeText={setEditBookPassengers} />
 
-                <Text style={styles.label}>Number of Bags</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={editBookBags} onChangeText={setEditBookBags} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('numberOfBags')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} keyboardType="numeric" value={editBookBags} onChangeText={setEditBookBags} />
 
-                <Text style={styles.label}>Departure Time *</Text>
-                <TextInput style={styles.input} value={editBookTime} onChangeText={setEditBookTime} />
+                <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('departureTimeRequired')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]} value={editBookTime} onChangeText={setEditBookTime} />
 
-                <TouchableOpacity style={styles.toggleACBtn} onPress={() => setEditBookAC(!editBookAC)}>
+                <TouchableOpacity style={[styles.toggleACBtn, { backgroundColor: theme.inputBackground }]} onPress={() => setEditBookAC(!editBookAC)}>
                   <Icon name={editBookAC ? 'snowflake' : 'fan'} size={20} color={editBookAC ? '#43A047' : '#E65100'} />
-                  <Text style={{ marginLeft: 8, fontWeight: '700' }}>
-                    Preference: {editBookAC ? 'Air Conditioned (AC)' : 'Non-AC'}
+                  <Text style={[{ marginLeft: 8, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>
+                    {t('acStatus')}: {editBookAC ? t('acAvailable') : t('nonAC')}
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingBookPost(null)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                  <Text style={[styles.cancelBtnText, { color: theme.textSecondary }, getTextStyle()]}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveEditBook}>
-                  <Text style={styles.confirmBtnText}>Save Changes</Text>
+                  <Text style={[styles.confirmBtnText, getTextStyle()]}>{t('saveChanges')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2127,14 +2148,14 @@ export default function HomeScreen({
         >
           <TouchableWithoutFeedback>
             <View style={[styles.modalContainer, {
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.cardBackground,
               borderRadius: 24,
               padding: 22,
               borderWidth: 1,
-              borderColor: '#E8EBE8',
+              borderColor: theme.border,
               ...Platform.select({
                 ios: {
-                  shadowColor: '#1B3E1E',
+                  shadowColor: '#000000',
                   shadowOffset: { width: 0, height: 10 },
                   shadowOpacity: 0.15,
                   shadowRadius: 20,
@@ -2166,77 +2187,77 @@ export default function HomeScreen({
                     width: 36,
                     height: 36,
                     borderRadius: 12,
-                    backgroundColor: '#F3F4F6',
+                    backgroundColor: theme.inputBackground,
                     justifyContent: 'center',
                     alignItems: 'center',
                   }}
                   activeOpacity={0.8}
                 >
-                  <Icon name="close" size={18} color="#4B5563" />
+                  <Icon name="close" size={18} color={theme.textPrimary} />
                 </TouchableOpacity>
               </View>
 
               {/* Driver Identity */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={[{ fontSize: 18, fontWeight: '900', color: '#1F2937' }, getTextStyle()]}>
-                  Driver: {selectedRideDetail?.driverName}
+                <Text style={[{ fontSize: 18, fontWeight: '900', color: theme.textPrimary }, getTextStyle()]}>
+                  {t('driver')}: {selectedRideDetail?.driverName}
                 </Text>
               </View>
 
               {/* Badges Row */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>⭐ 4.9 Rating (32 Reviews)</Text>
+                  <Text style={[{ fontSize: 11, fontWeight: '800', color: '#B45309' }, getTextStyle()]}>⭐ 4.9 ({t('ratingsAndReviewsTitle')})</Text>
                 </View>
                 <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#15803D' }}>99% Trust Score</Text>
+                  <Text style={[{ fontSize: 11, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>99% {t('trustScore')}</Text>
                 </View>
               </View>
 
               {/* Vehicle Details */}
               <View style={{ marginBottom: 12, gap: 4 }}>
-                <Text style={[{ fontSize: 13, color: '#4B5563', fontWeight: '500' }, getTextStyle()]}>
-                  Vehicle: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedRideDetail?.vehicleDetails}</Text>
+                <Text style={[{ fontSize: 13, color: theme.textSecondary, fontWeight: '500' }, getTextStyle()]}>
+                  {t('vehicleConfig')}: <Text style={{ fontWeight: '700', color: theme.textPrimary }}>{selectedRideDetail?.vehicleDetails}</Text>
                 </Text>
 
                 <Text style={[{ fontSize: 11, color: '#D97706', fontWeight: '700' }, getTextStyle()]}>
-                  🔒 Vehicle Registration No: Revealed after driver accepts booking
+                  {t('vehicleRegistrationHidden')}
                 </Text>
 
-                <Text style={[{ fontSize: 13, color: '#4B5563', fontWeight: '500' }, getTextStyle()]}>
-                  Departure Window: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedRideDetail?.departureTime}</Text>
+                <Text style={[{ fontSize: 13, color: theme.textSecondary, fontWeight: '500' }, getTextStyle()]}>
+                  {t('departureWindow')} <Text style={{ fontWeight: '700', color: theme.textPrimary }}>{selectedRideDetail?.departureTime}</Text>
                 </Text>
               </View>
 
               {/* Fare & Seat Summary Box */}
               <View style={{
-                backgroundColor: '#F8FAF9',
+                backgroundColor: theme.inputBackground,
                 borderWidth: 1,
-                borderColor: '#E2E8F0',
+                borderColor: theme.border,
                 borderRadius: 16,
                 padding: 14,
                 marginBottom: 16,
               }}>
                 {/* Seats Available Row */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#374151' }, getTextStyle()]}>Seats Available:</Text>
-                  <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) > 0 ? '#16A34A' : '#DC2626' }]}>
-                    {selectedRideDetail?.seatsAvailable} Seat{(selectedRideDetail?.seatsAvailable || 0) > 1 ? 's' : ''} Left
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('seatsAvailable')}:</Text>
+                  <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) > 0 ? '#16A34A' : '#DC2626' }, getTextStyle()]}>
+                    {selectedRideDetail?.seatsAvailable} {t('seats')} {t('seatsLeft')}
                   </Text>
                 </View>
 
                 {/* Seat Selector Stepper for Passenger */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#E5E7EB' }}>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#1F2937' }, getTextStyle()]}>Book Seats:</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.border }}>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('bookSeatsLabel')}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <TouchableOpacity
                       style={{
                         width: 34,
                         height: 34,
                         borderRadius: 10,
-                        backgroundColor: requestedSeatsCount > 1 ? '#FFFFFF' : '#F3F4F6',
+                        backgroundColor: requestedSeatsCount > 1 ? theme.cardBackground : theme.inputBackground,
                         borderWidth: 1,
-                        borderColor: requestedSeatsCount > 1 ? '#2F9A3C' : '#D1D5DB',
+                        borderColor: requestedSeatsCount > 1 ? '#2F9A3C' : theme.border,
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
@@ -2244,9 +2265,9 @@ export default function HomeScreen({
                       onPress={() => setRequestedSeatsCount((prev) => Math.max(1, prev - 1))}
                       activeOpacity={0.8}
                     >
-                      <Icon name="minus" size={16} color={requestedSeatsCount > 1 ? '#2F9A3C' : '#9CA3AF'} />
+                      <Icon name="minus" size={16} color={requestedSeatsCount > 1 ? '#2F9A3C' : theme.textSecondary} />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 17, fontWeight: '900', color: '#111827', minWidth: 20, textAlign: 'center' }}>
+                    <Text style={{ fontSize: 17, fontWeight: '900', color: theme.textPrimary, minWidth: 20, textAlign: 'center' }}>
                       {requestedSeatsCount}
                     </Text>
                     <TouchableOpacity
@@ -2254,7 +2275,7 @@ export default function HomeScreen({
                         width: 34,
                         height: 34,
                         borderRadius: 10,
-                        backgroundColor: requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#2F9A3C' : '#E5E7EB',
+                        backgroundColor: requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#2F9A3C' : theme.inputBackground,
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
@@ -2262,29 +2283,28 @@ export default function HomeScreen({
                       onPress={() => setRequestedSeatsCount((prev) => Math.min(selectedRideDetail?.seatsAvailable || 1, prev + 1))}
                       activeOpacity={0.8}
                     >
-                      <Icon name="plus" size={16} color={requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#FFFFFF' : '#9CA3AF'} />
+                      <Icon name="plus" size={16} color={requestedSeatsCount < (selectedRideDetail?.seatsAvailable || 1) ? '#FFFFFF' : theme.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* Single Seat Rate */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 6 }}>
-                  <Text style={[{ fontSize: 12, color: '#6B7280', fontWeight: '500' }, getTextStyle()]}>Rate per seat:</Text>
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#374151' }]}>Rs. {selectedRideDetail?.farePerSeat.toLocaleString()} / seat</Text>
+                  <Text style={[{ fontSize: 12, color: theme.textSecondary, fontWeight: '500' }, getTextStyle()]}>{t('ratePerSeat')}</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: theme.textPrimary }, getTextStyle()]}>{t('rs')} {selectedRideDetail?.farePerSeat.toLocaleString()}</Text>
                 </View>
 
                 {/* Total Multiplied Fare */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#F3F4F6' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: theme.border }}>
                   <Text style={[{ fontSize: 14, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>
-                    Total Fare ({requestedSeatsCount} Seat{requestedSeatsCount > 1 ? 's' : ''}):
+                    {t('totalFare')} ({requestedSeatsCount} {t('seats')}):
                   </Text>
-                  <Text style={[{ fontSize: 20, fontWeight: '900', color: '#15803D' }]}>
-                    Rs. {((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()}
+                  <Text style={[{ fontSize: 20, fontWeight: '900', color: '#15803D' }, getTextStyle()]}>
+                    {t('rs')} {((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()}
                   </Text>
                 </View>
               </View>
 
-              {/* Action Buttons: WhatsApp, Call, Send Booking Request */}
               {/* Action Buttons: WhatsApp, Call, In-App Message, Book Seat */}
               <TouchableOpacity
                 style={{
@@ -2317,7 +2337,7 @@ export default function HomeScreen({
                 activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Driver</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>{t('whatsappDriverBtn')}</Text>
               </TouchableOpacity>
 
               {/* Direct Call & In-App Message Row */}
@@ -2330,15 +2350,15 @@ export default function HomeScreen({
                     justifyContent: 'center',
                     height: 48,
                     borderRadius: 16,
-                    backgroundColor: '#FFFFFF',
+                    backgroundColor: theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: '#E5E7EB',
+                    borderColor: theme.border,
                   }}
                   onPress={() => handleTriggerEmergencyCall(selectedRideDetail?.driverPhone || '03449793574')}
                   activeOpacity={0.85}
                 >
-                  <Icon name="phone" size={18} color="#374151" style={{ marginRight: 6 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#374151' }, getTextStyle()]}>Direct Call</Text>
+                  <Icon name="phone" size={18} color={theme.textPrimary} style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>{t('directCall')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -2349,9 +2369,9 @@ export default function HomeScreen({
                     justifyContent: 'center',
                     height: 48,
                     borderRadius: 16,
-                    backgroundColor: '#EFF6FF',
+                    backgroundColor: theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: '#BFDBFE',
+                    borderColor: theme.border,
                   }}
                   onPress={() => {
                     if (selectedRideDetail) {
@@ -2368,7 +2388,7 @@ export default function HomeScreen({
                   activeOpacity={0.85}
                 >
                   <Icon name="chat-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>In-App Message</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>{t('inAppMessage')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -2380,9 +2400,9 @@ export default function HomeScreen({
                   justifyContent: 'center',
                   height: 50,
                   borderRadius: 16,
-                  backgroundColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#F0FDF4' : '#F3F4F6',
+                  backgroundColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#F0FDF4' : theme.inputBackground,
                   borderWidth: 1.5,
-                  borderColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#2F9A3C' : '#D1D5DB',
+                  borderColor: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#2F9A3C' : theme.border,
                 }}
                 disabled={(selectedRideDetail?.seatsAvailable || 0) < requestedSeatsCount}
                 onPress={() => {
@@ -2395,10 +2415,10 @@ export default function HomeScreen({
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#15803D' : '#9CA3AF' }, getTextStyle()]}>
+                <Text style={[{ fontSize: 14, fontWeight: '800', color: (selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount ? '#15803D' : theme.textSecondary }, getTextStyle()]}>
                   {(selectedRideDetail?.seatsAvailable || 0) >= requestedSeatsCount
-                    ? `Book ${requestedSeatsCount} Seat${requestedSeatsCount > 1 ? 's' : ''} (Rs. ${((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()})`
-                    : 'Not Enough Seats Available'}
+                    ? `${t('bookSeats')} ${requestedSeatsCount} (${t('rs')} ${((selectedRideDetail?.farePerSeat || 0) * requestedSeatsCount).toLocaleString()})`
+                    : t('notEnoughSeats')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2415,14 +2435,14 @@ export default function HomeScreen({
         >
           <TouchableWithoutFeedback>
             <View style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.cardBackground,
               borderRadius: 24,
               padding: 22,
               borderWidth: 1,
-              borderColor: '#E8EBE8',
+              borderColor: theme.border,
               ...Platform.select({
                 ios: {
-                  shadowColor: '#1B3E1E',
+                  shadowColor: '#000000',
                   shadowOffset: { width: 0, height: 10 },
                   shadowOpacity: 0.15,
                   shadowRadius: 20,
@@ -2454,21 +2474,21 @@ export default function HomeScreen({
                     width: 36,
                     height: 36,
                     borderRadius: 12,
-                    backgroundColor: '#F3F4F6',
+                    backgroundColor: theme.inputBackground,
                     justifyContent: 'center',
                     alignItems: 'center',
                   }}
                   activeOpacity={0.8}
                 >
-                  <Icon name="close" size={18} color="#4B5563" />
+                  <Icon name="close" size={18} color={theme.textPrimary} />
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 18, fontWeight: '900', color: '#1F2937', marginBottom: 4 }, getTextStyle()]}>
-                Passenger: {selectedSeatDetail?.passengerName}
+              <Text style={[{ fontSize: 18, fontWeight: '900', color: theme.textPrimary, marginBottom: 4 }, getTextStyle()]}>
+                {t('passenger')}: {selectedSeatDetail?.passengerName}
               </Text>
-              <Text style={[{ fontSize: 13, color: '#4B5563', marginBottom: 18, fontWeight: '500' }, getTextStyle()]}>
-                Requested Departure Time: <Text style={{ fontWeight: '700', color: '#1F2937' }}>{selectedSeatDetail?.departureTime}</Text>
+              <Text style={[{ fontSize: 13, color: theme.textSecondary, marginBottom: 18, fontWeight: '500' }, getTextStyle()]}>
+                {t('departureTime')}: <Text style={{ fontWeight: '700', color: theme.textPrimary }}>{selectedSeatDetail?.departureTime}</Text>
               </Text>
 
               {/* Action Buttons for Driver */}
@@ -2500,7 +2520,7 @@ export default function HomeScreen({
                 activeOpacity={0.85}
               >
                 <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>WhatsApp Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }, getTextStyle()]}>{t('whatsappPassengerBtn')}</Text>
               </TouchableOpacity>
 
               {/* Direct Call & In-App Message Row */}
@@ -2513,15 +2533,15 @@ export default function HomeScreen({
                     justifyContent: 'center',
                     height: 48,
                     borderRadius: 16,
-                    backgroundColor: '#FFFFFF',
+                    backgroundColor: theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: '#E5E7EB',
+                    borderColor: theme.border,
                   }}
                   onPress={() => handleTriggerEmergencyCall('03449793574')}
                   activeOpacity={0.85}
                 >
-                  <Icon name="phone" size={18} color="#374151" style={{ marginRight: 6 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '600', color: '#374151' }, getTextStyle()]}>Direct Call</Text>
+                  <Icon name="phone" size={18} color={theme.textPrimary} style={{ marginRight: 6 }} />
+                  <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>{t('directCall')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -2532,9 +2552,9 @@ export default function HomeScreen({
                     justifyContent: 'center',
                     height: 48,
                     borderRadius: 16,
-                    backgroundColor: '#EFF6FF',
+                    backgroundColor: theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: '#BFDBFE',
+                    borderColor: theme.border,
                   }}
                   onPress={() => {
                     if (selectedSeatDetail) {
@@ -2551,7 +2571,7 @@ export default function HomeScreen({
                   activeOpacity={0.85}
                 >
                   <Icon name="chat-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>In-App Message</Text>
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#2563EB' }, getTextStyle()]}>{t('inAppMessage')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -2576,7 +2596,7 @@ export default function HomeScreen({
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={[{ fontSize: 14, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>Offer a Seat to Passenger</Text>
+                <Text style={[{ fontSize: 14, fontWeight: '800', color: '#15803D' }, getTextStyle()]}>{t('offerSeatToPassenger')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -2601,7 +2621,7 @@ export default function HomeScreen({
             <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, padding: 20 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <Text style={[{ fontSize: 18, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
-                  Save New Route
+                  {t('saveNewRoute')}
                 </Text>
                 <TouchableOpacity onPress={() => setShowAddRouteModal(false)} style={{ padding: 4 }}>
                   <Icon name="close" size={22} color={theme.textSecondary} />
@@ -2609,29 +2629,29 @@ export default function HomeScreen({
               </View>
 
               <Text style={[{ fontSize: 13, color: theme.textSecondary, marginBottom: 14 }, getTextStyle()]}>
-                Select From & To cities from existing list of cities to save route.
+                {t('saveNewRouteSubtitle')}
               </Text>
 
-              <Text style={styles.label}>From City *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowNewRouteFromPicker(true)}>
-                <Text style={{ color: newRouteFrom ? theme.textPrimary : theme.textMuted }}>
-                  {newRouteFrom || 'Select From City'}
+              <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('fromCity')} *</Text>
+              <TouchableOpacity style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowNewRouteFromPicker(true)}>
+                <Text style={[{ color: newRouteFrom ? theme.textPrimary : theme.textSecondary }, getTextStyle()]}>
+                  {newRouteFrom || t('selectFromCity')}
                 </Text>
               </TouchableOpacity>
 
-              <Text style={styles.label}>To City *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowNewRouteToPicker(true)}>
-                <Text style={{ color: newRouteTo ? theme.textPrimary : theme.textMuted }}>
-                  {newRouteTo || 'Select To City'}
+              <Text style={[styles.label, { color: theme.textSecondary }, getTextStyle()]}>{t('toCity')} *</Text>
+              <TouchableOpacity style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowNewRouteToPicker(true)}>
+                <Text style={[{ color: newRouteTo ? theme.textPrimary : theme.textSecondary }, getTextStyle()]}>
+                  {newRouteTo || t('selectToCity')}
                 </Text>
               </TouchableOpacity>
 
               <View style={[styles.modalActions, { marginTop: 16 }]}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddRouteModal(false)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={() => setShowAddRouteModal(false)}>
+                  <Text style={[styles.cancelBtnText, { color: theme.textPrimary }, getTextStyle()]}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: '#2E7D32' }]} onPress={handleSaveNewRoute}>
-                  <Text style={styles.confirmBtnText}>Save Route</Text>
+                  <Text style={[styles.confirmBtnText, getTextStyle()]}>{t('saveRouteBtn')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2643,20 +2663,20 @@ export default function HomeScreen({
       <Modal visible={showNewRouteFromPicker} transparent animationType="fade" onRequestClose={() => setShowNewRouteFromPicker(false)}>
         <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowNewRouteFromPicker(false)}>
           <TouchableWithoutFeedback>
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerTitle}>Select From City</Text>
+            <View style={[styles.pickerContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+              <Text style={[styles.pickerTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('selectFromCity')}</Text>
               <FlatList
                 data={sheetCities}
                 keyExtractor={(item) => 'new_from_' + item}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={styles.pickerItem}
+                    style={[styles.pickerItem, { borderBottomColor: theme.border }]}
                     onPress={() => {
                       setNewRouteFrom(item);
                       setShowNewRouteFromPicker(false);
                     }}
                   >
-                    <Text style={styles.pickerItemText}>{item}</Text>
+                    <Text style={[styles.pickerItemText, { color: theme.textPrimary }, getTextStyle()]}>{item}</Text>
                   </TouchableOpacity>
                 )}
               />
@@ -2669,20 +2689,20 @@ export default function HomeScreen({
       <Modal visible={showNewRouteToPicker} transparent animationType="fade" onRequestClose={() => setShowNewRouteToPicker(false)}>
         <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowNewRouteToPicker(false)}>
           <TouchableWithoutFeedback>
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerTitle}>Select To City</Text>
+            <View style={[styles.pickerContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+              <Text style={[styles.pickerTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('selectToCity')}</Text>
               <FlatList
                 data={sheetCities}
                 keyExtractor={(item) => 'new_to_' + item}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={styles.pickerItem}
+                    style={[styles.pickerItem, { borderBottomColor: theme.border }]}
                     onPress={() => {
                       setNewRouteTo(item);
                       setShowNewRouteToPicker(false);
                     }}
                   >
-                    <Text style={styles.pickerItemText}>{item}</Text>
+                    <Text style={[styles.pickerItemText, { color: theme.textPrimary }, getTextStyle()]}>{item}</Text>
                   </TouchableOpacity>
                 )}
               />
@@ -2702,14 +2722,14 @@ export default function HomeScreen({
         >
           <TouchableWithoutFeedback>
             <View style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.cardBackground,
               borderRadius: 24,
               padding: 20,
               borderWidth: 1,
-              borderColor: '#E3E7E3',
+              borderColor: theme.border,
               ...Platform.select({
                 ios: {
-                  shadowColor: '#262A27',
+                  shadowColor: '#000000',
                   shadowOffset: { width: 0, height: 8 },
                   shadowOpacity: 0.16,
                   shadowRadius: 16,
@@ -2724,17 +2744,17 @@ export default function HomeScreen({
                   <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(47, 154, 60, 0.10)', justifyContent: 'center', alignItems: 'center' }}>
                     <Icon name="swap-horizontal" size={20} color="#2F9A3C" />
                   </View>
-                  <Text style={[{ fontSize: 16, fontWeight: '600', color: '#262A27' }, getTextStyle()]}>
-                    Switch Active Profile
+                  <Text style={[{ fontSize: 16, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
+                    {t('switchActiveProfile')}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setShowPersonaSwitchModal(false)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F3F2', justifyContent: 'center', alignItems: 'center' }}>
-                  <Icon name="close" size={18} color="#262A27" />
+                <TouchableOpacity onPress={() => setShowPersonaSwitchModal(false)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: theme.inputBackground, justifyContent: 'center', alignItems: 'center' }}>
+                  <Icon name="close" size={18} color={theme.textPrimary} />
                 </TouchableOpacity>
               </View>
 
-              <Text style={[{ fontSize: 12, color: '#8A908B', marginBottom: 16, lineHeight: 17 }, getTextStyle()]}>
-                Choose how you want to use Raahi right now. Your dashboard and live feed will immediately adapt.
+              <Text style={[{ fontSize: 12, color: theme.textSecondary, marginBottom: 16, lineHeight: 17 }, getTextStyle()]}>
+                {t('switchActiveProfileSubtitle')}
               </Text>
 
               {/* 2 Switch Buttons: Driver & Passenger */}
@@ -2748,13 +2768,13 @@ export default function HomeScreen({
                     paddingVertical: 16,
                     paddingHorizontal: 8,
                     borderRadius: 18,
-                    backgroundColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#FFFFFF',
+                    backgroundColor: subRoleTab === 'passenger' ? '#2F9A3C' : theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#E3E7E3',
+                    borderColor: subRoleTab === 'passenger' ? '#2F9A3C' : theme.border,
                     gap: 6,
                     ...Platform.select({
                       ios: {
-                        shadowColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#262A27',
+                        shadowColor: subRoleTab === 'passenger' ? '#2F9A3C' : '#000000',
                         shadowOffset: { width: 0, height: 4 },
                         shadowOpacity: subRoleTab === 'passenger' ? 0.25 : 0.06,
                         shadowRadius: 8,
@@ -2767,27 +2787,27 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('passenger');
                     setShowPersonaSwitchModal(false);
-                    showThemedAlert('Profile Switched!', 'You are now in Passenger Mode.', undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
+                    showThemedAlert(t('profileSwitchedTitle'), t('profileSwitchedPassenger'), undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
                   <Icon
                     name="account"
                     size={24}
-                    color={subRoleTab === 'passenger' ? '#FFFFFF' : '#262A27'}
+                    color={subRoleTab === 'passenger' ? '#FFFFFF' : theme.textPrimary}
                   />
                   <Text
-                    style={{
+                    style={[{
                       fontSize: 14,
                       fontWeight: '600',
-                      color: subRoleTab === 'passenger' ? '#FFFFFF' : '#262A27',
-                    }}
+                      color: subRoleTab === 'passenger' ? '#FFFFFF' : theme.textPrimary,
+                    }, getTextStyle()]}
                   >
-                    Passenger
+                    {t('passenger')}
                   </Text>
                   {subRoleTab === 'passenger' && (
                     <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }}>ACTIVE</Text>
+                      <Text style={[{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>{t('activeStatus')}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -2801,13 +2821,13 @@ export default function HomeScreen({
                     paddingVertical: 16,
                     paddingHorizontal: 8,
                     borderRadius: 18,
-                    backgroundColor: subRoleTab === 'driver' ? '#2F9A3C' : '#FFFFFF',
+                    backgroundColor: subRoleTab === 'driver' ? '#2F9A3C' : theme.inputBackground,
                     borderWidth: 1,
-                    borderColor: subRoleTab === 'driver' ? '#2F9A3C' : '#E3E7E3',
+                    borderColor: subRoleTab === 'driver' ? '#2F9A3C' : theme.border,
                     gap: 6,
                     ...Platform.select({
                       ios: {
-                        shadowColor: subRoleTab === 'driver' ? '#2F9A3C' : '#262A27',
+                        shadowColor: subRoleTab === 'driver' ? '#2F9A3C' : '#000000',
                         shadowOffset: { width: 0, height: 4 },
                         shadowOpacity: subRoleTab === 'driver' ? 0.25 : 0.06,
                         shadowRadius: 8,
@@ -2820,27 +2840,27 @@ export default function HomeScreen({
                   onPress={() => {
                     handleSubRoleChange('driver');
                     setShowPersonaSwitchModal(false);
-                    showThemedAlert('Profile Switched!', 'You are now in Driver Mode.', undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
+                    showThemedAlert(t('profileSwitchedTitle'), t('profileSwitchedDriver'), undefined, { type: 'success', iconName: 'check-decagram', autoDismissMs: 4000 });
                   }}
                   activeOpacity={0.85}
                 >
                   <Icon
                     name="steering"
                     size={24}
-                    color={subRoleTab === 'driver' ? '#FFFFFF' : '#262A27'}
+                    color={subRoleTab === 'driver' ? '#FFFFFF' : theme.textPrimary}
                   />
                   <Text
-                    style={{
+                    style={[{
                       fontSize: 14,
                       fontWeight: '600',
-                      color: subRoleTab === 'driver' ? '#FFFFFF' : '#262A27',
-                    }}
+                      color: subRoleTab === 'driver' ? '#FFFFFF' : theme.textPrimary,
+                    }, getTextStyle()]}
                   >
-                    Driver
+                    {t('driver')}
                   </Text>
                   {subRoleTab === 'driver' && (
                     <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }}>ACTIVE</Text>
+                      <Text style={[{ fontSize: 9, fontWeight: '600', color: '#FFFFFF' }, getTextStyle()]}>{t('activeStatus')}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -2850,16 +2870,16 @@ export default function HomeScreen({
                 style={{
                   height: 48,
                   borderRadius: 16,
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: theme.inputBackground,
                   borderWidth: 1,
-                  borderColor: '#E3E7E3',
+                  borderColor: theme.border,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
                 onPress={() => setShowPersonaSwitchModal(false)}
                 activeOpacity={0.85}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#262A27' }}>Cancel</Text>
+                <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>{t('cancel')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -2874,7 +2894,7 @@ export default function HomeScreen({
               <Icon name="arrow-left" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
             <Text style={[{ fontSize: 16, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
-              Trip History & Trust Score
+              {t('tripHistoryAndTrust')}
             </Text>
             <View style={{ width: 24 }} />
           </View>
@@ -2888,22 +2908,22 @@ export default function HomeScreen({
                 <>
                   <View style={{ backgroundColor: '#1B3E1E', borderRadius: 16, padding: 16, marginBottom: 16 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>
-                        {isDriverMode ? 'Driver Safety & Trust Score' : 'Passenger Safety & Trust Score'}
+                      <Text style={[{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }, getTextStyle()]}>
+                        {isDriverMode ? t('driverSafetyAndTrustScore') : t('passengerSafetyAndTrustScore')}
                       </Text>
                       <View style={{ backgroundColor: '#2E7D32', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{trust.totalScore}% {trust.tierLabel}</Text>
+                        <Text style={[{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }, getTextStyle()]}>{trust.totalScore}% {trust.tierLabel}</Text>
                       </View>
                     </View>
 
                     <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 }}>
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#A5D6A7', fontSize: 11 }}>Trips Completed</Text>
-                        <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginTop: 2 }}>{trust.pillars.completedTrips.count} Rides</Text>
+                        <Text style={[{ color: '#A5D6A7', fontSize: 11 }, getTextStyle()]}>{t('totalTripsTaken')}</Text>
+                        <Text style={[{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginTop: 2 }, getTextStyle()]}>{trust.pillars.completedTrips.count} {t('trips')}</Text>
                       </View>
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#A5D6A7', fontSize: 11 }}>User Rating</Text>
-                        <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginTop: 2 }}>⭐ {trust.pillars.ratingsAndReviews.rating.toFixed(1)}</Text>
+                        <Text style={[{ color: '#A5D6A7', fontSize: 11 }, getTextStyle()]}>{t('passengerTrustRating')}</Text>
+                        <Text style={[{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginTop: 2 }, getTextStyle()]}>⭐ {trust.pillars.ratingsAndReviews.rating.toFixed(1)}</Text>
                       </View>
                     </View>
                   </View>
@@ -2911,7 +2931,7 @@ export default function HomeScreen({
                   {/* Pillars Calculation Breakdown */}
                   <View style={{ backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 16, marginBottom: 16 }}>
                     <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary, marginBottom: 12 }, getTextStyle()]}>
-                      Score Calculation Breakdown ({isDriverMode ? '4 Pillars' : '3 Pillars'})
+                      {t('scoreBreakdown')} ({isDriverMode ? '4' : '3'})
                     </Text>
 
                     {/* Pillar 1: User Verification */}
@@ -2929,7 +2949,7 @@ export default function HomeScreen({
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>1. User Identity Verification</Text>
+                            <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>{t('userIdentityVerification')}</Text>
                             <Icon name="chevron-right" size={14} color={theme.primary} style={{ marginLeft: 2 }} />
                           </View>
                           <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>{trust.pillars.userVerification.details}</Text>
@@ -2940,7 +2960,7 @@ export default function HomeScreen({
                           {trust.pillars.userVerification.score}/{trust.pillars.userVerification.max} pts
                         </Text>
                         {!trust.pillars.userVerification.isComplete && (
-                          <Text style={{ fontSize: 9, color: '#D97706', fontWeight: '800', marginTop: 1 }}>Verify Now ➔</Text>
+                          <Text style={[{ fontSize: 9, color: '#D97706', fontWeight: '800', marginTop: 1 }, getTextStyle()]}>{t('verifyNow')}</Text>
                         )}
                       </View>
                     </TouchableOpacity>
@@ -2961,7 +2981,7 @@ export default function HomeScreen({
                           </View>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>2. Driver & Vehicle Verification</Text>
+                              <Text style={[{ fontSize: 12, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>{t('driverVehicleVerification')}</Text>
                               <Icon name="chevron-right" size={14} color={theme.primary} style={{ marginLeft: 2 }} />
                             </View>
                             <Text style={[{ fontSize: 11, color: theme.textSecondary }, getTextStyle()]}>{trust.pillars.driverVehicleVerification.details}</Text>
@@ -3016,17 +3036,17 @@ export default function HomeScreen({
 
             {/* Complete List of Shared Trips */}
             <Text style={[{ fontSize: 15, fontWeight: '800', color: theme.textPrimary, marginBottom: 12 }, getTextStyle()]}>
-              All Shared Trips
+              {t('allSharedTrips')}
             </Text>
 
             <View style={{ backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 14, marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Islamabad ➔ Multan</Text>
                 <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                  <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Completed</Text>
+                  <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('completed')}</Text>
                 </View>
               </View>
-              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>Driver: Usman Khan • Fare: Rs. 2,200</Text>
+              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>{t('driver')}: Usman Khan • {t('fare')}: {t('rs')} 2,200</Text>
               <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>22 Jul 2026 • 01:30 PM</Text>
             </View>
 
@@ -3034,10 +3054,10 @@ export default function HomeScreen({
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Lahore ➔ Islamabad</Text>
                 <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                  <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Completed</Text>
+                  <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('completed')}</Text>
                 </View>
               </View>
-              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>Driver: Ali Raza • Fare: Rs. 1,800</Text>
+              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>{t('driver')}: Ali Raza • {t('fare')}: {t('rs')} 1,800</Text>
               <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>18 Jul 2026 • 09:00 AM</Text>
             </View>
 
@@ -3045,10 +3065,10 @@ export default function HomeScreen({
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <Text style={[{ fontSize: 14, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>Rawalpindi ➔ Peshawar</Text>
                 <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                  <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }}>Completed</Text>
+                  <Text style={[{ color: '#2E7D32', fontSize: 10, fontWeight: '800' }, getTextStyle()]}>{t('completed')}</Text>
                 </View>
               </View>
-              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>Driver: Hamza Tariq • Fare: Rs. 1,400</Text>
+              <Text style={[{ fontSize: 12, color: theme.textSecondary }, getTextStyle()]}>{t('driver')}: Hamza Tariq • {t('fare')}: {t('rs')} 1,400</Text>
               <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>10 Jul 2026 • 04:15 PM</Text>
             </View>
           </ScrollView>
@@ -3063,7 +3083,7 @@ export default function HomeScreen({
               <Icon name="arrow-left" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
             <Text style={[{ fontSize: 16, fontWeight: '800', color: theme.textPrimary }, getTextStyle()]}>
-              Driver Earnings & Trip Breakdown
+              {t('driverEarningsAndTripBreakdown')}
             </Text>
             <View style={{ width: 24 }} />
           </View>
@@ -3072,11 +3092,11 @@ export default function HomeScreen({
             {/* Filter Selector Card */}
             <View style={{ backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 12, marginBottom: 14 }}>
               <Text style={[{ fontSize: 13, fontWeight: '800', color: theme.textPrimary, marginBottom: 8 }, getTextStyle()]}>
-                Filter Earnings & Trips
+                {t('filterEarningsAndTrips')}
               </Text>
 
               {/* Filter Mode Selector Pills */}
-              <View style={{ flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 10, padding: 3, marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', backgroundColor: theme.inputBackground, borderRadius: 10, padding: 3, marginBottom: 10, borderWidth: 1, borderColor: theme.border }}>
                 <TouchableOpacity
                   style={{
                     flex: 1,
@@ -3087,7 +3107,7 @@ export default function HomeScreen({
                   }}
                   onPress={() => setEarningsFilterMode('monthly')}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: earningsFilterMode === 'monthly' ? '#FFFFFF' : '#4B5563' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: earningsFilterMode === 'monthly' ? '#FFFFFF' : theme.textSecondary }}>
                     Monthly Filter
                   </Text>
                 </TouchableOpacity>
@@ -3102,7 +3122,7 @@ export default function HomeScreen({
                   }}
                   onPress={() => setEarningsFilterMode('custom')}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: earningsFilterMode === 'custom' ? '#FFFFFF' : '#4B5563' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: earningsFilterMode === 'custom' ? '#FFFFFF' : theme.textSecondary }}>
                     Custom Date Range
                   </Text>
                 </TouchableOpacity>
@@ -3125,7 +3145,7 @@ export default function HomeScreen({
                         borderRadius: 8,
                         borderWidth: 1,
                         borderColor: selectedMonth === item.month ? '#2E7D32' : theme.border,
-                        backgroundColor: selectedMonth === item.month ? '#E8F5E9' : theme.cardBackground,
+                        backgroundColor: selectedMonth === item.month ? 'rgba(47, 154, 60, 0.15)' : theme.inputBackground,
                         alignItems: 'center',
                       }}
                       onPress={() => setSelectedMonth(item.month)}
@@ -3133,7 +3153,7 @@ export default function HomeScreen({
                       <Text style={[{ fontSize: 11, fontWeight: '800', color: selectedMonth === item.month ? '#2E7D32' : theme.textPrimary }, getTextStyle()]}>
                         {item.month}
                       </Text>
-                      <Text style={{ fontSize: 9, color: selectedMonth === item.month ? '#2E7D32' : '#9CA3AF', marginTop: 2 }}>
+                      <Text style={{ fontSize: 9, color: selectedMonth === item.month ? '#2E7D32' : theme.textSecondary, marginTop: 2 }}>
                         {item.range}
                       </Text>
                     </TouchableOpacity>
@@ -3145,22 +3165,22 @@ export default function HomeScreen({
                   <View style={{ flex: 1 }}>
                     <Text style={[{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginBottom: 4 }, getTextStyle()]}>Start Date</Text>
                     <TextInput
-                      style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, color: theme.textPrimary, backgroundColor: theme.background }}
+                      style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, color: theme.textPrimary, backgroundColor: theme.inputBackground }}
                       value={customStartDate}
                       onChangeText={setCustomStartDate}
                       placeholder="DD/MM/YYYY"
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </View>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: theme.textSecondary, marginTop: 14 }}>➔</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={[{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginBottom: 4 }, getTextStyle()]}>End Date</Text>
                     <TextInput
-                      style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, color: theme.textPrimary, backgroundColor: theme.background }}
+                      style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, color: theme.textPrimary, backgroundColor: theme.inputBackground }}
                       value={customEndDate}
                       onChangeText={setCustomEndDate}
                       placeholder="DD/MM/YYYY"
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </View>
                 </View>
@@ -3289,7 +3309,7 @@ export default function HomeScreen({
 
       {/* Soft UI Floating Bottom Navigation Bar */}
       <View style={styles.floatingBottomNavContainer}>
-        <View style={styles.floatingBottomNav}>
+        <View style={[styles.floatingBottomNav, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           {/* 1. Home Tab (Integrated Booking & Dashboard) */}
           <TouchableOpacity
             style={[
@@ -3302,15 +3322,16 @@ export default function HomeScreen({
             <Icon
               name="home-variant"
               size={22}
-              color={mainNavTab === 'dashboard' ? '#FFFFFF' : '#8A908B'}
+              color={mainNavTab === 'dashboard' ? '#FFFFFF' : theme.textSecondary}
             />
             <Text
               style={[
                 styles.floatingNavText,
-                mainNavTab === 'dashboard' ? styles.floatingNavTextActive : styles.floatingNavTextInactive,
+                mainNavTab === 'dashboard' ? styles.floatingNavTextActive : [styles.floatingNavTextInactive, { color: theme.textSecondary }],
+                getTextStyle(),
               ]}
             >
-              Home
+              {t('homeNav')}
             </Text>
           </TouchableOpacity>
 
@@ -3326,15 +3347,16 @@ export default function HomeScreen({
             <Icon
               name="lightning-bolt"
               size={22}
-              color={mainNavTab === 'home' ? '#FFFFFF' : '#8A908B'}
+              color={mainNavTab === 'home' ? '#FFFFFF' : theme.textSecondary}
             />
             <Text
               style={[
                 styles.floatingNavText,
-                mainNavTab === 'home' ? styles.floatingNavTextActive : styles.floatingNavTextInactive,
+                mainNavTab === 'home' ? styles.floatingNavTextActive : [styles.floatingNavTextInactive, { color: theme.textSecondary }],
+                getTextStyle(),
               ]}
             >
-              Active Now
+              {t('activeNow')}
             </Text>
           </TouchableOpacity>
 
@@ -3351,15 +3373,17 @@ export default function HomeScreen({
             <Icon
               name="cog-outline"
               size={22}
-              color="#8A908B"
+              color={theme.textSecondary}
             />
             <Text
               style={[
                 styles.floatingNavText,
                 styles.floatingNavTextInactive,
+                { color: theme.textSecondary },
+                getTextStyle(),
               ]}
             >
-              Settings
+              {t('settings')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -3387,7 +3411,6 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F2F3F2',
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   header: {
@@ -3396,12 +3419,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E3E7E3',
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.06,
         shadowRadius: 10,
@@ -3428,15 +3449,18 @@ const styles = StyleSheet.create({
   },
   profileTextWrapper: {
     flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
   userNameText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#262A27',
   },
   roleTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
     gap: 6,
     marginTop: 2,
   },
@@ -3472,16 +3496,14 @@ const styles = StyleSheet.create({
   personaSwitchPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3E7E3',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 9999,
     gap: 4,
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.06,
         shadowRadius: 4,
@@ -3494,7 +3516,6 @@ const styles = StyleSheet.create({
   personaSwitchText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#262A27',
   },
   sosButton: {
     flexDirection: 'row',
@@ -3524,9 +3545,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3E7E3',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3545,13 +3564,12 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
   },
   bookingCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
         shadowRadius: 10,
@@ -3575,12 +3593,10 @@ const styles = StyleSheet.create({
   bookingTitleText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#262A27',
   },
   clearBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#8A908B',
   },
   routeInputRow: {
     flexDirection: 'row',
@@ -3591,9 +3607,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3E7E3',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3601,13 +3615,11 @@ const styles = StyleSheet.create({
   },
   routeInputText: {
     fontSize: 14,
-    color: '#262A27',
     fontWeight: '600',
     flex: 1,
   },
   routeInputPlaceholder: {
     fontSize: 13,
-    color: '#8A908B',
     flex: 1,
   },
   routeArrowCircle: {
@@ -3644,7 +3656,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   activeTripBanner: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
@@ -3652,7 +3663,7 @@ const styles = StyleSheet.create({
     borderColor: '#2F9A3C',
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
         shadowRadius: 10,
@@ -3679,7 +3690,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#262A27',
   },
   sectionActionText: {
     fontSize: 13,
@@ -3693,12 +3703,11 @@ const styles = StyleSheet.create({
   },
   statTile: {
     width: '48.5%',
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
         shadowRadius: 10,
@@ -3710,12 +3719,11 @@ const styles = StyleSheet.create({
   },
   statTile3: {
     width: '31.5%',
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 12,
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
         shadowRadius: 10,
@@ -3737,17 +3745,14 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#262A27',
   },
   statLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#262A27',
     marginTop: 2,
   },
   statSubText: {
     fontSize: 11,
-    color: '#8A908B',
     marginTop: 2,
   },
   floatingBottomNavContainer: {
@@ -3760,7 +3765,6 @@ const styles = StyleSheet.create({
   },
   floatingBottomNav: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
     borderRadius: 28,
     height: 72,
     width: '100%',
@@ -3768,10 +3772,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#E3E7E3',
     ...Platform.select({
       ios: {
-        shadowColor: '#262A27',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.1,
         shadowRadius: 16,

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Icon from '../components/AppIcon';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useTheme } from '../theme/ThemeContext';
 import { AppNotification } from '../types';
 import {
   getNotificationsLocal,
@@ -31,6 +32,7 @@ export default function NotificationScreen({
   onUnreadCountChanged,
   onSelectNotification,
 }: NotificationScreenProps) {
+  const { theme } = useTheme();
   const { t, isUrdu, getTextStyle } = useLanguage();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -98,14 +100,14 @@ export default function NotificationScreen({
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F2F3F2" />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
       {/* Soft UI Elevated Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-          <Icon name="arrow-left" size={20} color="#262A27" />
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+        <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={onBack} activeOpacity={0.8}>
+          <Icon name="arrow-left" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, getTextStyle()]}>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>
           {t('notifications')}
         </Text>
         {unreadCount > 0 ? (
@@ -119,14 +121,14 @@ export default function NotificationScreen({
 
       {/* Action Bar */}
       {notifications.length > 0 && (
-        <View style={styles.actionBar}>
+        <View style={[styles.actionBar, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
           <TouchableOpacity style={styles.actionBtn} onPress={handleMarkAllRead} activeOpacity={0.8}>
             <Icon name="check-all" size={16} color="#2F9A3C" />
             <Text style={[styles.actionBtnText, { color: "#2F9A3C" }, getTextStyle()]}>{t('markAllRead')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={handleClearAll} activeOpacity={0.8}>
-            <Icon name="trash-can-outline" size={16} color="#8A908B" />
-            <Text style={[styles.actionBtnText, { color: "#8A908B" }, getTextStyle()]}>{t('clearAll')}</Text>
+            <Icon name="trash-can-outline" size={16} color={theme.textSecondary} />
+            <Text style={[styles.actionBtnText, { color: theme.textSecondary }, getTextStyle()]}>{t('clearAll')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -138,13 +140,13 @@ export default function NotificationScreen({
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-              <Icon name="bell-off-outline" size={28} color="#8A908B" />
+            <View style={[styles.emptyIconContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+              <Icon name="bell-off-outline" size={28} color={theme.textSecondary} />
             </View>
-            <Text style={[styles.emptyTitle, getTextStyle()]}>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }, getTextStyle()]}>
               {t('noActiveNotifications')}
             </Text>
-            <Text style={[styles.emptySubtitle, getTextStyle()]}>
+            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }, getTextStyle()]}>
               {t('allNotificationsRead')}
             </Text>
           </View>
@@ -155,6 +157,7 @@ export default function NotificationScreen({
             <TouchableOpacity
               style={[
                 styles.notifCard,
+                { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 },
                 !item.read ? styles.notifCardUnread : null,
               ]}
               onPress={async () => {
@@ -165,17 +168,17 @@ export default function NotificationScreen({
               }}
               activeOpacity={0.85}
             >
-              <View style={[styles.iconCircle, !item.read ? styles.iconCircleActive : null]}>
-                <Icon name={iconName} size={18} color={!item.read ? "#2F9A3C" : "#8A908B"} />
+              <View style={[styles.iconCircle, { backgroundColor: theme.inputBackground }, !item.read ? styles.iconCircleActive : null]}>
+                <Icon name={iconName} size={18} color={!item.read ? "#2F9A3C" : theme.textSecondary} />
               </View>
               <View style={styles.notifBody}>
                 <View style={styles.notifHeaderRow}>
-                  <Text style={[styles.notifTitle, !item.read ? styles.unreadTitleText : null]}>
+                  <Text style={[styles.notifTitle, { color: theme.textPrimary }, !item.read ? styles.unreadTitleText : null, getTextStyle()]}>
                     {item.title}
                   </Text>
-                  <Text style={styles.timeText}>{formatTimeAgo(item.timestamp)}</Text>
+                  <Text style={[styles.timeText, { color: theme.textSecondary }]}>{formatTimeAgo(item.timestamp)}</Text>
                 </View>
-                <Text style={styles.messageText}>{item.message}</Text>
+                <Text style={[styles.messageText, { color: theme.textSecondary }, getTextStyle()]}>{item.message}</Text>
               </View>
               {!item.read && <View style={styles.unreadDot} />}
             </TouchableOpacity>

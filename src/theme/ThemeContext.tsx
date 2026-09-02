@@ -64,7 +64,34 @@ export const lightColors: ThemeColors = {
 };
 
 export const darkColors: ThemeColors = {
-  ...lightColors, // Consistent neumorphic appearance on light theme baseline
+  primary: '#38AF46',
+  primaryDark: '#2F9A3C',
+  primaryLight: '#4ADE80',
+  primaryBackground: 'rgba(56, 175, 70, 0.15)',
+  primaryBorder: '#38AF46',
+  accent: '#38AF46',
+  accentLight: 'rgba(56, 175, 70, 0.18)',
+  accentBackground: 'rgba(56, 175, 70, 0.12)',
+  white: '#121613',
+  surface: '#1E231F',
+  background: '#121613',
+  cardBackground: '#1C221E',
+  textPrimary: '#F1F5F2',
+  textSecondary: '#9EAA9F',
+  textMuted: '#748275',
+  textLight: '#FFFFFF',
+  border: '#2D382F',
+  inputBackground: '#161B17',
+  divider: '#2D382F',
+  icon: '#E1E8E2',
+  mutedSurface: '#242D26',
+  lightBorder: '#2D382F',
+  softShadow: 'rgba(0, 0, 0, 0.50)',
+  deepSoftShadow: 'rgba(0, 0, 0, 0.70)',
+  greenShadow: 'rgba(56, 175, 70, 0.35)',
+  greenTint: 'rgba(56, 175, 70, 0.15)',
+  disabledOverlay: 'rgba(116, 130, 117, 0.30)',
+  statusBar: 'light-content',
 };
 
 interface ThemeContextType {

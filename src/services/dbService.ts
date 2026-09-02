@@ -41,18 +41,77 @@ export const getProfileFromFirebase = async (uid: string): Promise<UserProfile |
 // 2. LOCAL DB FOR RIDE POSTS & REQUESTS (AsyncStorage DB)
 // ==========================================
 
-// --- Helper: Clean up posts older than 30 minutes after departure time ---
-const isPostActive = (departureTimestamp: number): boolean => {
-  const THIRTY_MINS_MS = 30 * 60 * 1000;
-  const expirationTime = departureTimestamp + THIRTY_MINS_MS;
-  return Date.now() <= expirationTime;
+// --- Helper: Parse time/date or calculate reliable departure timestamp ---
+export const parseDepartureTimestamp = (departureTimeStr?: string, travelDateStr?: string): number => {
+  const now = new Date();
+  let baseDate = new Date(now);
+
+  if (travelDateStr) {
+    const lowerDate = travelDateStr.trim().toLowerCase();
+    if (lowerDate === 'today') {
+      // Keep today
+    } else if (lowerDate === 'tomorrow') {
+      baseDate.setDate(baseDate.getDate() + 1);
+    } else {
+      const parsedDate = new Date(travelDateStr);
+      if (!isNaN(parsedDate.getTime())) {
+        baseDate = parsedDate;
+      }
+    }
+  }
+
+  if (departureTimeStr) {
+    // If range like "14:00 to 15:00" or "14:00 - 15:00", pick the end of the range so the post remains visible throughout the window
+    let targetTimeStr = departureTimeStr;
+    if (departureTimeStr.toLowerCase().includes('to')) {
+      const parts = departureTimeStr.split(/to/i);
+      targetTimeStr = parts[parts.length - 1].trim();
+    } else if (departureTimeStr.includes('-')) {
+      const parts = departureTimeStr.split('-');
+      targetTimeStr = parts[parts.length - 1].trim();
+    }
+
+    // Match "14:30" or "2:30 PM" or "02:30pm"
+    const match12 = targetTimeStr.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+    const match24 = targetTimeStr.match(/(\d{1,2}):(\d{2})/);
+
+    if (match12) {
+      let hours = parseInt(match12[1], 10);
+      const mins = parseInt(match12[2], 10);
+      const meridian = match12[3].toLowerCase();
+      if (meridian === 'pm' && hours < 12) hours += 12;
+      if (meridian === 'am' && hours === 12) hours = 0;
+      baseDate.setHours(hours, mins, 0, 0);
+      return baseDate.getTime();
+    } else if (match24) {
+      const hours = parseInt(match24[1], 10);
+      const mins = parseInt(match24[2], 10);
+      baseDate.setHours(hours, mins, 0, 0);
+      return baseDate.getTime();
+    }
+  }
+
+  // Fallback: 2 hours from now
+  return Date.now() + 2 * 60 * 60 * 1000;
+};
+
+// --- Helper: Clean up posts whose departure window has passed ---
+const isPostActive = (departureTimestamp?: number, departureTimeStr?: string, travelDateStr?: string): boolean => {
+  const ts = departureTimestamp || parseDepartureTimestamp(departureTimeStr, travelDateStr);
+  const THIRTY_MINS_MS = 30 * 60 * 1000; // Grace period of 30 minutes after departure window
+  return Date.now() <= ts + THIRTY_MINS_MS;
 };
 
 // --- Offer Ride Posts (Driver) ---
 export const saveOfferRidePostLocal = async (post: OfferRidePost): Promise<void> => {
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
   let posts: OfferRidePost[] = raw ? JSON.parse(raw) : [];
-  posts = posts.filter((p) => isPostActive(p.departureTimestamp));
+  // Ensure timestamp is accurately assigned if missing/outdated
+  if (!post.departureTimestamp || isNaN(post.departureTimestamp)) {
+    post.departureTimestamp = parseDepartureTimestamp(post.departureTime, post.travelDate);
+  }
+  // Auto-prune expired posts and unshift new post
+  posts = posts.filter((p) => p.seatsAvailable > 0 && isPostActive(p.departureTimestamp, p.departureTime, p.travelDate));
   posts.unshift(post);
   await AsyncStorage.setItem(KEYS.LOCAL_OFFER_RIDE_POSTS, JSON.stringify(posts));
 };
@@ -66,6 +125,18 @@ export const getOfferRidePostsLocal = async (
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_OFFER_RIDE_POSTS);
   if (!raw) return [];
   let posts: OfferRidePost[] = JSON.parse(raw);
+
+  // Auto-remove expired rides or rides where all seats are already booked
+  const activePosts = posts.filter(
+    (p) => (p.seatsAvailable ?? 0) > 0 && isPostActive(p.departureTimestamp, p.departureTime, p.travelDate)
+  );
+
+  // Sync back pruned state if any posts expired or filled up
+  if (activePosts.length !== posts.length) {
+    await AsyncStorage.setItem(KEYS.LOCAL_OFFER_RIDE_POSTS, JSON.stringify(activePosts));
+  }
+  posts = activePosts;
+
   // Auto-heal any posts created with 0 or missing farePerSeat using live dynamic formula
   for (let i = 0; i < posts.length; i++) {
     if (!posts[i].farePerSeat || posts[i].farePerSeat <= 0) {
@@ -108,7 +179,10 @@ export const getOfferRidePostsLocal = async (
 export const saveBookRidePostLocal = async (post: BookRidePost): Promise<void> => {
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
   let posts: BookRidePost[] = raw ? JSON.parse(raw) : [];
-  posts = posts.filter((p) => isPostActive(p.departureTimestamp));
+  if (!post.departureTimestamp || isNaN(post.departureTimestamp)) {
+    post.departureTimestamp = parseDepartureTimestamp(post.departureTime, post.travelDate);
+  }
+  posts = posts.filter((p) => (p.passengersCount ?? 0) > 0 && isPostActive(p.departureTimestamp, p.departureTime, p.travelDate));
   posts.unshift(post);
   await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(posts));
 };
@@ -122,7 +196,16 @@ export const getBookRidePostsLocal = async (
   const raw = await AsyncStorage.getItem(KEYS.LOCAL_BOOK_RIDE_POSTS);
   if (!raw) return [];
   let posts: BookRidePost[] = JSON.parse(raw);
-  posts = posts.filter((p) => isPostActive(p.departureTimestamp));
+
+  // Auto-remove expired passenger requests or requests where all required seats were fulfilled
+  const activePosts = posts.filter(
+    (p) => (p.passengersCount ?? 0) > 0 && isPostActive(p.departureTimestamp, p.departureTime, p.travelDate)
+  );
+
+  if (activePosts.length !== posts.length) {
+    await AsyncStorage.setItem(KEYS.LOCAL_BOOK_RIDE_POSTS, JSON.stringify(activePosts));
+  }
+  posts = activePosts;
 
   if (fromCity && fromCity.trim().length > 0) {
     posts = posts.filter((p) => p.fromCity.toLowerCase() === fromCity.trim().toLowerCase());

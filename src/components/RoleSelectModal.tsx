@@ -27,7 +27,7 @@ export default function RoleSelectModal({
   canDismiss = false,
   onDismiss,
 }: RoleSelectModalProps) {
-  const { getTextStyle } = useLanguage();
+  const { t, getTextStyle } = useLanguage();
 
   return (
     <Modal
@@ -49,10 +49,10 @@ export default function RoleSelectModal({
               <Icon name="routes" size={28} color="#2F9A3C" />
             </View>
             <Text style={[styles.title, getTextStyle()]}>
-              Welcome to Raahi
+              {t('welcomeToRaahi')}
             </Text>
             <Text style={[styles.subtitle, getTextStyle()]}>
-              Select your initial profile mode to continue.
+              {t('welcomeSubtitle')}
             </Text>
           </View>
 
@@ -83,27 +83,27 @@ export default function RoleSelectModal({
                 {activeRole === 'passenger' && (
                   <View style={styles.selectedBadge}>
                     <Icon name="check" size={12} color="#FFFFFF" />
-                    <Text style={styles.selectedBadgeText}>Active</Text>
+                    <Text style={styles.selectedBadgeText}>{t('activeStatus')}</Text>
                   </View>
                 )}
               </View>
 
               <Text style={[styles.roleTitle, getTextStyle()]}>
-                Passenger Mode
+                {t('passengerMode')}
               </Text>
               <Text style={[styles.roleDesc, getTextStyle()]}>
-                Search available rides, request seats, and travel between cities with verified drivers.
+                {t('passengerModeDesc')}
               </Text>
 
               <View style={styles.tagsRow}>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>Search Rides</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('searchRides')}</Text>
                 </View>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>Book Seats</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('bookSeats')}</Text>
                 </View>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>SOS Safety</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('sosSafety')}</Text>
                 </View>
               </View>
 
@@ -120,7 +120,7 @@ export default function RoleSelectModal({
                     getTextStyle(),
                   ]}
                 >
-                  Continue as Passenger ➔
+                  {t('continueAsPassenger')}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -150,27 +150,27 @@ export default function RoleSelectModal({
                 {activeRole === 'driver' && (
                   <View style={styles.selectedBadge}>
                     <Icon name="check" size={12} color="#FFFFFF" />
-                    <Text style={styles.selectedBadgeText}>Active</Text>
+                    <Text style={styles.selectedBadgeText}>{t('activeStatus')}</Text>
                   </View>
                 )}
               </View>
 
               <Text style={[styles.roleTitle, getTextStyle()]}>
-                Driver Mode
+                {t('driverMode')}
               </Text>
               <Text style={[styles.roleDesc, getTextStyle()]}>
-                Offer empty seats on intercity trips, recover fuel expenses, and manage bookings.
+                {t('driverModeDesc')}
               </Text>
 
               <View style={styles.tagsRow}>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>Post Rides</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('offerRide')}</Text>
                 </View>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>Recover Fuel</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('recoverFuel')}</Text>
                 </View>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>Vehicle Setup</Text>
+                  <Text style={[styles.featureTagText, getTextStyle()]}>{t('vehicleConfig')}</Text>
                 </View>
               </View>
 
@@ -187,7 +187,7 @@ export default function RoleSelectModal({
                     getTextStyle(),
                   ]}
                 >
-                  Continue as Driver ➔
+                  {t('continueAsDriver')}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -195,7 +195,7 @@ export default function RoleSelectModal({
 
           {/* Footer Note */}
           <Text style={[styles.footerNote, getTextStyle()]}>
-            You can switch between Passenger and Driver anytime from the top bar.
+            {t('roleFooterNote')}
           </Text>
         </View>
       </SafeAreaView>

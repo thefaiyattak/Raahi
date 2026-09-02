@@ -222,86 +222,86 @@ export default function ProfileScreen({
   const isDriver = (userProfile.activeProfile || 'passenger') === 'driver';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBackground} />
       {/* Top Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Icon name="arrow-left" size={22} color="#262A27" />
+      <View style={[styles.header, { backgroundColor: theme.cardBackground, borderBottomColor: theme.border }]}>
+        <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={onBack}>
+          <Icon name="arrow-left" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, getTextStyle()]}>{t('profile')}</Text>
-        <TouchableOpacity style={styles.gearButton} onPress={onNavigateToSettings}>
-          <Icon name="cog-outline" size={22} color="#262A27" />
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]}>{t('profile')}</Text>
+        <TouchableOpacity style={[styles.gearButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]} onPress={onNavigateToSettings}>
+          <Icon name="cog-outline" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Active Persona Header Card */}
-        <View style={styles.personaCard}>
+        <View style={[styles.personaCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <View style={styles.personaIconContainer}>
             <Icon name={isDriver ? 'steering' : 'account'} size={22} color="#2F9A3C" />
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={[styles.personaTitle, getTextStyle()]}>
-                {isDriver ? 'Driver Profile' : 'Passenger Profile'}
+              <Text style={[styles.personaTitle, { color: theme.textPrimary }, getTextStyle()]}>
+                {isDriver ? t('driverProfile') : t('passengerProfile')}
               </Text>
               <View style={styles.activePill}>
-                <Text style={styles.activePillText}>ACTIVE</Text>
+                <Text style={[styles.activePillText, getTextStyle()]}>{t('activeStatus')}</Text>
               </View>
             </View>
-            <Text style={styles.personaSubText}>
-              {isDriver ? 'Active persona: Offering rides & vehicle management' : 'Active persona: Searching rides & seat bookings'}
+            <Text style={[styles.personaSubText, { color: theme.textSecondary }, getTextStyle()]}>
+              {isDriver ? t('driverPersonaSubText') : t('passengerPersonaSubText')}
             </Text>
           </View>
         </View>
 
         {/* Public Reviews Card */}
         <TouchableOpacity
-          style={styles.ratingCard}
+          style={[styles.ratingCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
           onPress={() => setShowRatingsModal(true)}
           activeOpacity={0.85}
         >
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Icon name="star" size={18} color="#2F9A3C" />
-              <Text style={styles.ratingValue}>4.9 / 5.0</Text>
+              <Text style={[styles.ratingValue, { color: theme.textPrimary }]}>4.9 / 5.0</Text>
               <View style={styles.verifiedScoreBadge}>
-                <Text style={styles.verifiedScoreText}>Verified Traveler</Text>
+                <Text style={[styles.verifiedScoreText, getTextStyle()]}>{t('verifiedTraveler')}</Text>
               </View>
             </View>
-            <Text style={[styles.ratingSubText, getTextStyle()]}>
-              32 Ratings & 8 Comments • Tap for details
+            <Text style={[styles.ratingSubText, { color: theme.textSecondary }, getTextStyle()]}>
+              32 {t('ratingsAndReviewsTitle')} • {t('tapForLog')}
             </Text>
           </View>
           <View style={styles.viewReviewsBtn}>
-            <Text style={styles.viewReviewsBtnText}>Reviews</Text>
+            <Text style={[styles.viewReviewsBtnText, getTextStyle()]}>{t('reviews')}</Text>
             <Icon name="chevron-right" size={16} color="#2F9A3C" />
           </View>
         </TouchableOpacity>
 
         {/* DRIVER SPECIFIC: Vehicle Setup Status */}
         {isDriver && (
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={styles.vehicleIconBadge}>
                 <Icon name={hasVehicleProfile ? 'car-side' : 'car-cog'} size={20} color="#2F9A3C" />
               </View>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.sectionTitle, getTextStyle()]}>
-                    {hasVehicleProfile ? 'Vehicle & Driver Setup' : 'Configure Driver Vehicle'}
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }, getTextStyle()]}>
+                    {hasVehicleProfile ? t('vehicleConfig') : t('configureDriverVehicle')}
                   </Text>
                   <View style={styles.readyBadge}>
-                    <Text style={styles.readyBadgeText}>
-                      {hasVehicleProfile ? 'READY' : 'REQUIRED'}
+                    <Text style={[styles.readyBadgeText, getTextStyle()]}>
+                      {hasVehicleProfile ? t('readyStatus') : t('requiredStatus')}
                     </Text>
                   </View>
                 </View>
-                <Text style={[styles.cardSubtitle, getTextStyle()]}>
+                <Text style={[styles.cardSubtitle, { color: theme.textSecondary }, getTextStyle()]}>
                   {hasVehicleProfile
-                    ? `${driverProfile?.vehicleName || 'Toyota'} ${driverProfile?.vehicleModel || 'Corolla'} • ${driverProfile?.defaultACStatus ? 'AC Enabled' : 'Non-AC'}`
-                    : 'Set up car details, AC pricing rates, and driver documents.'}
+                    ? `${driverProfile?.vehicleName || 'Toyota'} ${driverProfile?.vehicleModel || 'Corolla'} • ${driverProfile?.defaultACStatus ? t('acAvailable') : t('nonAC')}`
+                    : t('vehicleSetupPrompt')}
                 </Text>
               </View>
               <TouchableOpacity
@@ -310,8 +310,8 @@ export default function ProfileScreen({
                 activeOpacity={0.85}
               >
                 <Icon name="pencil" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.actionBtnSmallText}>
-                  {hasVehicleProfile ? 'Manage' : 'Setup'}
+                <Text style={[styles.actionBtnSmallText, getTextStyle()]}>
+                  {hasVehicleProfile ? t('manageVehicle') : t('setupVehicle')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -319,9 +319,9 @@ export default function ProfileScreen({
         )}
 
         {/* Identity & Photo Card */}
-        <View style={styles.card}>
-          <Text style={[styles.cardHeading, getTextStyle()]}>
-            {isDriver ? 'Driver Photo & Identity' : 'Passenger Photo & Identity'}
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.cardHeading, { color: theme.textPrimary }, getTextStyle()]}>
+            {isDriver ? t('driverPhotoIdentity') : t('passengerPhotoIdentity')}
           </Text>
           <View style={styles.photoContainer}>
             <View style={styles.photoFrame}>
@@ -335,76 +335,76 @@ export default function ProfileScreen({
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.userNameText, getTextStyle()]}>
-              {fullName || (isDriver ? 'Driver Name' : 'Passenger Name')}
+            <Text style={[styles.userNameText, { color: theme.textPrimary }, getTextStyle()]}>
+              {fullName || (isDriver ? t('driver') : t('passenger'))}
             </Text>
             <View style={styles.phoneTagRow}>
-              <Text style={styles.phoneTagText}>{phoneNumber || '+923449793574'}</Text>
+              <Text style={[styles.phoneTagText, { color: theme.textSecondary }]}>{phoneNumber || '+923449793574'}</Text>
               <Icon name="check-decagram" size={16} color="#2F9A3C" />
             </View>
 
-            <TouchableOpacity style={styles.updatePhotoBtn} onPress={handlePickProfilePhoto} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.updatePhotoBtn, { backgroundColor: theme.inputBackground, borderColor: theme.border, borderWidth: 1 }]} onPress={handlePickProfilePhoto} activeOpacity={0.85}>
               <Icon name="upload" size={14} color="#2F9A3C" style={{ marginRight: 6 }} />
               <Text style={[styles.updatePhotoBtnText, getTextStyle()]}>
-                Update Profile Photo
+                {t('updateProfilePhoto')}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Personal Details Card */}
-        <View style={styles.card}>
-          <Text style={[styles.cardHeading, getTextStyle()]}>Personal Details</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.cardHeading, { color: theme.textPrimary }, getTextStyle()]}>{t('personalDetailsHeading')}</Text>
 
-          <Text style={[styles.inputLabel, getTextStyle()]}>Full Legal Name *</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('fullName')} *</Text>
           <TextInput
-            style={[styles.inputField, getTextStyle()]}
+            style={[styles.inputField, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
             value={fullName}
             onChangeText={setFullName}
             placeholder="e.g. Faisal Hayat"
-            placeholderTextColor="#8A908B"
+            placeholderTextColor={theme.textSecondary}
           />
 
-          <Text style={[styles.inputLabel, getTextStyle()]}>Contact Phone Number *</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('contactPhoneNumber')} *</Text>
           <TextInput
-            style={[styles.inputField, getTextStyle()]}
+            style={[styles.inputField, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
             value={phoneNumber}
             onChangeText={setPhoneNumber}
             placeholder="e.g. +923449793574"
-            placeholderTextColor="#8A908B"
+            placeholderTextColor={theme.textSecondary}
             keyboardType="phone-pad"
           />
         </View>
 
         {/* CNIC / License Document Verification Card */}
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={[styles.cardHeading, { marginBottom: 0 }, getTextStyle()]}>
-              {isDriver ? 'Driver License & CNIC' : 'CNIC Identity Verification'}
+            <Text style={[styles.cardHeading, { color: theme.textPrimary, marginBottom: 0 }, getTextStyle()]}>
+              {isDriver ? t('driverLicenseAndCNIC') : t('cnicIdentityVerification')}
             </Text>
             <View style={styles.verifiedStatusBadge}>
-              <Text style={styles.verifiedStatusText}>
-                {isDriver ? (licenseFrontUri ? '✓ Verified' : 'Action Required') : ((cnicFrontUri && cnicBackUri) ? '✓ CNIC Verified' : 'Pending Upload')}
+              <Text style={[styles.verifiedStatusText, getTextStyle()]}>
+                {isDriver ? (licenseFrontUri ? `✓ ${t('verified')}` : t('actionRequired')) : ((cnicFrontUri && cnicBackUri) ? `✓ ${t('cnicVerified')}` : t('pendingUpload'))}
               </Text>
             </View>
           </View>
 
-          <Text style={[styles.inputLabel, getTextStyle()]}>
-            {isDriver ? 'Driving License Number *' : 'CNIC Number *'}
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>
+            {isDriver ? t('drivingLicenseNumber') : t('cnicNumber')} *
           </Text>
           <TextInput
-            style={[styles.inputField, { marginBottom: 12 }, getTextStyle()]}
+            style={[styles.inputField, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary, marginBottom: 12 }, getTextStyle()]}
             value={isDriver ? licenseNumber : cnicNumber}
             onChangeText={isDriver ? setLicenseNumber : setCnicNumber}
             placeholder={isDriver ? 'e.g. LHR-2021-998812' : '35202-1234567-1'}
-            placeholderTextColor="#8A908B"
+            placeholderTextColor={theme.textSecondary}
           />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, marginRight: 6 }}>
-              <Text style={styles.docSubLabel}>{isDriver ? 'License Front' : 'CNIC Front'}</Text>
+              <Text style={[styles.docSubLabel, { color: theme.textSecondary }, getTextStyle()]}>{isDriver ? t('licenseFront') : t('cnicFront')}</Text>
               <TouchableOpacity
-                style={styles.docUploadBox}
+                style={[styles.docUploadBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument(isDriver ? 'License Front' : 'CNIC Front', isDriver ? setLicenseFrontUri : setCnicFrontUri)}
                 activeOpacity={0.85}
               >
@@ -412,17 +412,17 @@ export default function ProfileScreen({
                   <Image source={{ uri: (isDriver ? licenseFrontUri : cnicFrontUri)! }} style={styles.docImage} />
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <Icon name="card-account-details-outline" size={24} color="#8A908B" />
-                    <Text style={styles.docUploadText}>+ Upload Front</Text>
+                    <Icon name="card-account-details-outline" size={24} color={theme.textSecondary} />
+                    <Text style={[styles.docUploadText, { color: theme.textSecondary }, getTextStyle()]}>{t('uploadFront')}</Text>
                   </View>
                 )}
               </TouchableOpacity>
             </View>
 
             <View style={{ flex: 1, marginLeft: 6 }}>
-              <Text style={styles.docSubLabel}>{isDriver ? 'Vehicle Registration' : 'CNIC Back'}</Text>
+              <Text style={[styles.docSubLabel, { color: theme.textSecondary }, getTextStyle()]}>{isDriver ? t('vehicleRegistration') : t('cnicBack')}</Text>
               <TouchableOpacity
-                style={styles.docUploadBox}
+                style={[styles.docUploadBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument(isDriver ? 'Vehicle Registration' : 'CNIC Back', isDriver ? setVehicleRegUri : setCnicBackUri)}
                 activeOpacity={0.85}
               >
@@ -430,8 +430,8 @@ export default function ProfileScreen({
                   <Image source={{ uri: (isDriver ? vehicleRegUri : cnicBackUri)! }} style={styles.docImage} />
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <Icon name={isDriver ? 'car-check' : 'card-account-details'} size={24} color="#8A908B" />
-                    <Text style={styles.docUploadText}>{isDriver ? '+ Upload Doc' : '+ Upload Back'}</Text>
+                    <Icon name={isDriver ? 'car-check' : 'card-account-details'} size={24} color={theme.textSecondary} />
+                    <Text style={[styles.docUploadText, { color: theme.textSecondary }, getTextStyle()]}>{isDriver ? t('uploadDoc') : t('uploadBack')}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -440,9 +440,9 @@ export default function ProfileScreen({
         </View>
 
         {/* Medical & Blood Group Card */}
-        <View style={styles.card}>
-          <Text style={[styles.cardHeading, getTextStyle()]}>Medical & Blood Group</Text>
-          <Text style={[styles.inputLabel, getTextStyle()]}>Select Blood Group</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.cardHeading, { color: theme.textPrimary }, getTextStyle()]}>{t('medicalAndBloodGroup')}</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('selectBloodGroup')}</Text>
           <View style={styles.bloodGroupRow}>
             {BLOOD_GROUPS.map((bg) => {
               const isSelected = bloodGroup === bg;
@@ -451,6 +451,7 @@ export default function ProfileScreen({
                   key={bg}
                   style={[
                     styles.bloodGroupChip,
+                    { backgroundColor: theme.inputBackground, borderColor: theme.border },
                     isSelected ? styles.bloodGroupChipSelected : null,
                   ]}
                   onPress={() => setBloodGroup(bg)}
@@ -459,6 +460,7 @@ export default function ProfileScreen({
                   <Text
                     style={[
                       styles.bloodGroupChipText,
+                      { color: isSelected ? '#FFFFFF' : theme.textPrimary },
                       isSelected ? styles.bloodGroupChipTextSelected : null,
                     ]}
                   >
@@ -471,8 +473,8 @@ export default function ProfileScreen({
 
           {/* Emergency SOS Contacts */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8 }}>
-            <Text style={[styles.sectionTitle, getTextStyle()]}>
-              Emergency Contacts (Max 3)
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }, getTextStyle()]}>
+              {t('emergencyContactsMax3')}
             </Text>
             {emergencyContactsList.length < 3 && (
               <TouchableOpacity
@@ -481,35 +483,35 @@ export default function ProfileScreen({
                 activeOpacity={0.85}
               >
                 <Icon name="plus" size={14} color="#2F9A3C" style={{ marginRight: 2 }} />
-                <Text style={[styles.addContactBtnText, getTextStyle()]}>Add New</Text>
+                <Text style={[styles.addContactBtnText, getTextStyle()]}>{t('addNew')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {emergencyContactsList.map((contact, index) => (
-            <View key={contact.id} style={styles.contactRowBox}>
+            <View key={contact.id} style={[styles.contactRowBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Icon name="shield-alert-outline" size={16} color="#2F9A3C" style={{ marginRight: 8 }} />
-                  <Text style={[styles.contactNameText, getTextStyle()]}>
-                    {contact.name || `Contact #${index + 1}`} {contact.relation ? `(${contact.relation})` : ''}
+                  <Text style={[styles.contactNameText, { color: theme.textPrimary }, getTextStyle()]}>
+                    {contact.name || `${t('contact')} #${index + 1}`} {contact.relation ? `(${contact.relation})` : ''}
                   </Text>
                 </View>
                 <Text style={styles.contactPhoneText}>
-                  {contact.phone || 'No phone set'}
+                  {contact.phone || t('noPhoneSet')}
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
-                  style={styles.contactActionCircle}
+                  style={[styles.contactActionCircle, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
                   onPress={() => Linking.openURL(`sms:${contact.phone}?body=${encodeURIComponent('Raahi Emergency: I need urgent help!')}`)}
                   activeOpacity={0.85}
                 >
-                  <Icon name="message-text" size={14} color="#262A27" />
+                  <Icon name="message-text" size={14} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.contactActionCircle}
+                  style={[styles.contactActionCircle, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
                   onPress={() => Linking.openURL(`tel:${contact.phone}`)}
                   activeOpacity={0.85}
                 >
@@ -517,7 +519,7 @@ export default function ProfileScreen({
                 </TouchableOpacity>
                 {emergencyContactsList.length > 1 && (
                   <TouchableOpacity onPress={() => handleRemoveEmergencyContact(contact.id)} style={{ padding: 4 }}>
-                    <Icon name="trash-can-outline" size={16} color="#8A908B" />
+                    <Icon name="trash-can-outline" size={16} color={theme.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -534,7 +536,7 @@ export default function ProfileScreen({
         >
           <Icon name="content-save" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
           <Text style={[styles.primarySaveButtonText, getTextStyle()]}>
-            {isSaving ? 'Saving Changes...' : 'Save Profile Changes'}
+            {isSaving ? t('savingChanges') : t('saveProfileChanges')}
           </Text>
         </TouchableOpacity>
       </ScrollView>

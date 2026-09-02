@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Icon from './AppIcon';
 import { useTheme } from '../theme/ThemeContext';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export interface ThemedAlertButton {
   text: string;
@@ -39,6 +40,7 @@ export const ThemedAlertModal: React.FC<ThemedAlertProps> = ({
   onClose,
 }) => {
   const { theme } = useTheme();
+  const { getTextStyle } = useLanguage();
 
   React.useEffect(() => {
     if (visible && autoDismissMs > 0 && (!buttons || buttons.length <= 1)) {
@@ -89,15 +91,15 @@ export const ThemedAlertModal: React.FC<ThemedAlertProps> = ({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.modalCard}>
+            <View style={[styles.modalCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
               {/* Top Accent Icon Circle */}
               <View style={[styles.iconCircle, { backgroundColor: iconBgColor }]}>
                 <Icon name={defaultIcon} size={28} color={iconColor} />
               </View>
 
               {/* Title & Description */}
-              <Text style={styles.titleText}>{title}</Text>
-              {message ? <Text style={styles.messageText}>{message}</Text> : null}
+              <Text style={[styles.titleText, { color: theme.textPrimary }, getTextStyle()]}>{title}</Text>
+              {message ? <Text style={[styles.messageText, { color: theme.textSecondary }, getTextStyle()]}>{message}</Text> : null}
 
               {/* Action Buttons */}
               <View style={styles.buttonsContainer}>
@@ -107,14 +109,14 @@ export const ThemedAlertModal: React.FC<ThemedAlertProps> = ({
                   const isPrimary = !isDestructive && !isCancel;
 
                   let btnStyle = styles.primaryBtn;
-                  let textStyle = styles.primaryBtnText;
+                  let textStyle: any = styles.primaryBtnText;
 
                   if (isDestructive) {
                     btnStyle = styles.destructiveBtn;
                     textStyle = styles.destructiveBtnText;
                   } else if (isCancel) {
-                    btnStyle = styles.cancelBtn;
-                    textStyle = styles.cancelBtnText;
+                    btnStyle = [styles.cancelBtn, { backgroundColor: theme.inputBackground, borderColor: theme.border }];
+                    textStyle = [styles.cancelBtnText, { color: theme.textPrimary }];
                   }
 
                   return (
@@ -131,7 +133,7 @@ export const ThemedAlertModal: React.FC<ThemedAlertProps> = ({
                       }}
                       activeOpacity={0.85}
                     >
-                      <Text style={textStyle}>{btn.text}</Text>
+                      <Text style={[textStyle, getTextStyle()]}>{btn.text}</Text>
                     </TouchableOpacity>
                   );
                 })}

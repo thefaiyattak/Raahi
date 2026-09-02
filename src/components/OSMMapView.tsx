@@ -1,8 +1,9 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator, TouchableOpacity, Text, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Icon from './AppIcon';
 import { LatLng } from '../services/osmService';
+import { useTheme } from '../theme/ThemeContext';
 
 export interface OSMMapMarker {
   id: string;
@@ -14,7 +15,7 @@ export interface OSMMapMarker {
   iconType?: 'driver' | 'passenger' | 'pickup' | 'dropoff';
 }
 
-export type MapStyleType = 'soft' | 'satellite' | 'dark' | 'standard';
+export type MapStyleType = 'soft' | 'satellite' | 'standard';
 
 interface OSMMapViewProps {
   initialCenter?: LatLng;
@@ -37,10 +38,11 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
   interactive = true,
   showControls = true,
 }) => {
+  const { theme } = useTheme();
   const webViewRef = useRef<any>(null);
   const [activeMapStyle, setActiveMapStyle] = useState<MapStyleType>('soft');
 
-  const tileLayerUrls: Record<MapStyleType, { url: string; subdomains?: string[] }> = {
+  const tileLayerUrls: Record<MapStyleType, { url: string; subdomains?: string[]; isDark?: boolean }> = {
     // 100% Free OpenStreetMap Standard Tiles (No API key, No watermarks)
     soft: {
       url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -49,11 +51,6 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
     // Esri World Imagery (Free High-Res Satellite View)
     satellite: {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    },
-    // Stadia / OpenStreetMap Dark Night Mode
-    dark: {
-      url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-      subdomains: ['a', 'b', 'c'],
     },
     // Humanitarian OpenStreetMap (High-detail topography)
     standard: {
@@ -81,8 +78,13 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
             width: 100%;
             margin: 0;
             padding: 0;
-            background-color: ${activeMapStyle === 'dark' ? '#111827' : '#F2F3F2'};
+            background-color: ${activeMapStyle === 'dark' ? '#121613' : '#F2F3F2'};
           }
+          ${activeMapStyle === 'dark' ? `
+          .leaflet-tile {
+            filter: brightness(0.9) contrast(1.1);
+          }
+          ` : ''}
           /* Smart Modern Sleek Pin */
           .smart-pin-wrapper {
             position: relative;
@@ -218,6 +220,19 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
             if (window.map) window.map.flyTo([lat, lng], 15, { animate: true, duration: 1 });
             else map.flyTo([lat, lng], 15, { animate: true, duration: 1 });
           };
+          window.switchMapTile = function(tileUrl, subdomains) {
+            if (currentTileLayer) {
+              map.removeLayer(currentTileLayer);
+            }
+            const opts = { maxZoom: 19 };
+            if (subdomains && subdomains.length) {
+              opts.subdomains = subdomains;
+            }
+            currentTileLayer = L.tileLayer(tileUrl, opts).addTo(map);
+            if (markerGroup) {
+              markerGroup.bringToFront();
+            }
+          };
           window.map = map;
 
           ${
@@ -318,53 +333,60 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
       {showControls && (
         <>
           {/* Top-Right Theme Layer Selector */}
-          <View style={styles.themeSelectorRow}>
+          <View style={[styles.themeSelectorRow, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
             <TouchableOpacity
               style={[styles.themeChip, activeMapStyle === 'soft' && styles.themeChipActive]}
-              onPress={() => setActiveMapStyle('soft')}
+              onPress={() => {
+                setActiveMapStyle('soft');
+                const cfg = tileLayerUrls.soft;
+                webViewRef.current?.injectJavaScript(`
+                  if (typeof window.switchMapTile === 'function') {
+                    window.switchMapTile('${cfg.url}', ${JSON.stringify(cfg.subdomains || [])});
+                  }
+                  true;
+                `);
+              }}
               activeOpacity={0.8}
             >
-              <Icon name="palette" size={13} color={activeMapStyle === 'soft' ? '#FFFFFF' : '#262A27'} />
-              <Text style={[styles.themeChipText, activeMapStyle === 'soft' && styles.themeChipTextActive]}>
+              <Icon name="palette" size={13} color={activeMapStyle === 'soft' ? '#FFFFFF' : theme.textPrimary} />
+              <Text style={[styles.themeChipText, { color: theme.textPrimary }, activeMapStyle === 'soft' && styles.themeChipTextActive]}>
                 Soft UI
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.themeChip, activeMapStyle === 'satellite' && styles.themeChipActive]}
-              onPress={() => setActiveMapStyle('satellite')}
+              onPress={() => {
+                setActiveMapStyle('satellite');
+                const cfg = tileLayerUrls.satellite;
+                webViewRef.current?.injectJavaScript(`
+                  if (typeof window.switchMapTile === 'function') {
+                    window.switchMapTile('${cfg.url}', ${JSON.stringify(cfg.subdomains || [])});
+                  }
+                  true;
+                `);
+              }}
               activeOpacity={0.8}
             >
-              <Icon name="earth" size={13} color={activeMapStyle === 'satellite' ? '#FFFFFF' : '#262A27'} />
-              <Text style={[styles.themeChipText, activeMapStyle === 'satellite' && styles.themeChipTextActive]}>
+              <Icon name="earth" size={13} color={activeMapStyle === 'satellite' ? '#FFFFFF' : theme.textPrimary} />
+              <Text style={[styles.themeChipText, { color: theme.textPrimary }, activeMapStyle === 'satellite' && styles.themeChipTextActive]}>
                 Satellite
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.themeChip, activeMapStyle === 'dark' && styles.themeChipActive]}
-              onPress={() => setActiveMapStyle('dark')}
-              activeOpacity={0.8}
-            >
-              <Icon name="weather-night" size={13} color={activeMapStyle === 'dark' ? '#FFFFFF' : '#262A27'} />
-              <Text style={[styles.themeChipText, activeMapStyle === 'dark' && styles.themeChipTextActive]}>
-                Dark
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Right Floating Control Bar (+, -, Locate Me) */}
           <View style={styles.controlsColumn}>
-            <TouchableOpacity style={styles.controlButton} onPress={handleLocateMe} activeOpacity={0.85}>
+            <TouchableOpacity style={[styles.controlButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]} onPress={handleLocateMe} activeOpacity={0.85}>
               <Icon name="crosshairs-gps" size={18} color="#2F9A3C" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.controlButton} onPress={handleZoomIn} activeOpacity={0.85}>
-              <Icon name="plus" size={18} color="#262A27" />
+            <TouchableOpacity style={[styles.controlButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]} onPress={handleZoomIn} activeOpacity={0.85}>
+              <Icon name="plus" size={18} color={theme.textPrimary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.controlButton} onPress={handleZoomOut} activeOpacity={0.85}>
-              <Icon name="minus" size={18} color="#262A27" />
+            <TouchableOpacity style={[styles.controlButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]} onPress={handleZoomOut} activeOpacity={0.85}>
+              <Icon name="minus" size={18} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         </>

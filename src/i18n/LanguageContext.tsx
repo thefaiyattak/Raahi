@@ -51,7 +51,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const isUrdu = language === 'Urdu';
 
-  // Poppins Typography for English & Nasta'liq Typography for Urdu
+  // Clean Typography for English & Noto Nastaliq Urdu for Urdu
   const getTextStyle = (baseStyle?: TextStyle): TextStyle => {
     if (!isUrdu) {
       return {
@@ -60,14 +60,25 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       };
     }
     const origFontSize = baseStyle?.fontSize || 14;
-    // Scale font size slightly (0.92x) so text fits inside container boxes cleanly
-    const fittedFontSize = Math.max(11, Math.round(origFontSize * 0.92));
-    
+    const isBold =
+      baseStyle?.fontWeight === 'bold' ||
+      baseStyle?.fontWeight === '700' ||
+      baseStyle?.fontWeight === '800' ||
+      baseStyle?.fontWeight === '900';
+
+    const fittedFontSize = Math.max(12, Math.round(origFontSize * 0.95));
+    const urduFontFamily =
+      Platform.OS === 'android'
+        ? isBold
+          ? 'NotoNastaliqUrdu-Bold'
+          : 'NotoNastaliqUrdu-Regular'
+        : 'Noto Nastaliq Urdu, Urdu Typesetting, System';
+
     return {
       ...(baseStyle || {}),
-      fontFamily: Platform.OS === 'android' ? 'noto-nastaliq-urdu, serif, sans-serif' : 'Noto Nastaliq Urdu, Urdu Typesetting, System',
+      fontFamily: urduFontFamily,
       fontSize: fittedFontSize,
-      lineHeight: Math.round(fittedFontSize * 1.5),
+      lineHeight: Math.round(fittedFontSize * 1.6),
       textAlign: (baseStyle?.textAlign || 'right') as TextStyle['textAlign'],
       writingDirection: 'rtl' as const,
     };

@@ -76,6 +76,9 @@ import {
   FileCheck,
   Send,
   SendHorizontal,
+  ArrowLeftRight,
+  ArrowUpDown,
+  Repeat,
 } from 'lucide-react-native';
 
 import Colors from '../theme/colors';
@@ -156,6 +159,9 @@ const OUTLINE_ICON_MAP: Record<string, React.ComponentType<any>> = {
   'minus': Minus,
   'plus-circle': PlusCircle,
   'close': X,
+  'swap-horizontal': ArrowLeftRight,
+  'swap-vertical': ArrowUpDown,
+  'repeat': Repeat,
   'crosshairs-gps': Crosshair,
   'crosshairs': Crosshair,
   'palette': Sparkles,

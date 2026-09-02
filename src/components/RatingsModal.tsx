@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import Icon from './AppIcon';
+import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { UserReview, UserProfile } from '../types';
 import { getPublicReviewsLocal, savePublicReviewLocal, updatePublicReviewLocal } from '../services/storage';
@@ -22,7 +23,8 @@ interface RatingsModalProps {
 }
 
 export default function RatingsModal({ visible, onClose, userProfile }: RatingsModalProps) {
-  const { isUrdu, getTextStyle } = useLanguage();
+  const { theme } = useTheme();
+  const { isUrdu, t, getTextStyle } = useLanguage();
 
   const [reviews, setReviews] = useState<UserReview[]>([]);
   const [showWriteForm, setShowWriteForm] = useState(false);
@@ -57,7 +59,7 @@ export default function RatingsModal({ visible, onClose, userProfile }: RatingsM
 
   const handleStartEdit = (review: UserReview) => {
     if (review.isEdited) {
-      Alert.alert('Edit Limit Reached', 'This review has already been edited once. Reviews can only be edited 1 time.');
+      Alert.alert(t('editLimitReached'), t('editLimitReachedDesc'));
       return;
     }
     setEditingReviewId(review.id);
@@ -69,7 +71,7 @@ export default function RatingsModal({ visible, onClose, userProfile }: RatingsM
 
   const handleSaveOrUpdateReview = async () => {
     if (!commentText.trim() || commentText.trim().length < 4) {
-      Alert.alert('Review Required', 'Please enter a comment with at least 4 characters.');
+      Alert.alert(t('reviewRequiredTitle'), t('reviewRequiredDesc'));
       return;
     }
 
@@ -83,7 +85,7 @@ export default function RatingsModal({ visible, onClose, userProfile }: RatingsM
           reviewerRole,
           date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         });
-        Alert.alert('Review Updated!', 'Your review has been edited successfully (1-time edit used).');
+        Alert.alert(t('reviewUpdatedTitle'), t('reviewUpdatedDesc'));
       } else {
         // ADD NEW VERIFIED RIDE REVIEW
         const newReview: UserReview = {
@@ -102,7 +104,7 @@ export default function RatingsModal({ visible, onClose, userProfile }: RatingsM
         };
 
         await savePublicReviewLocal(newReview);
-        Alert.alert('Review Submitted!', 'Your verified ride review and rating have been posted publicly.');
+        Alert.alert(t('reviewSubmittedTitle'), t('reviewSubmittedDesc'));
       }
 
       setCommentText('');
@@ -117,188 +119,215 @@ export default function RatingsModal({ visible, onClose, userProfile }: RatingsM
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          {/* Modal Header */}
-          <View style={styles.headerRow}>
+        <View style={[styles.modalContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 }]}>
+          {/* Header */}
+          <View style={[styles.headerRow, { borderBottomColor: theme.border }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={styles.starCircle}>
                 <Icon name="star" size={18} color="#2F9A3C" />
               </View>
-              <Text style={[styles.titleText, getTextStyle()]}>
-                {isUrdu ? 'عوامی ریٹنگز اور تبصرے' : 'Ratings & Reviews'}
+              <Text style={[styles.titleText, { color: theme.textPrimary }, getTextStyle()]}>
+                {t('ratingsAndReviewsTitle')}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.85}>
-              <Icon name="close" size={18} color="#262A27" />
+            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: theme.inputBackground }]} onPress={onClose} activeOpacity={0.8}>
+              <Icon name="close" size={18} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
-            {/* Overall Score Banner */}
-            <View style={styles.scoreBanner}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+            {/* Top Rating Summary Card */}
+            <View style={[styles.scoreBanner, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
               <View style={styles.scoreLeft}>
-                <Text style={styles.scoreBigVal}>{calculateAvgRating()}</Text>
+                <Text style={[styles.scoreBigVal, { color: theme.textPrimary }]}>{calculateAvgRating()}</Text>
                 <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Icon key={s} name="star" size={16} color="#2F9A3C" style={{ marginRight: 2 }} />
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Icon
+                      key={star}
+                      name="star"
+                      size={16}
+                      color={star <= Math.round(Number(calculateAvgRating())) ? '#2F9A3C' : theme.border}
+                    />
                   ))}
                 </View>
-                <Text style={[styles.scoreSubText, getTextStyle()]}>
-                  Based on {reviews.length} verified shared ride reviews
+                <Text style={[styles.scoreSubText, { color: theme.textSecondary }, getTextStyle()]}>
+                  {reviews.length} {t('verifiedRideReviewsCount')}
                 </Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.writeReviewBtn}
-                onPress={() => {
-                  setEditingReviewId(null);
-                  setSelectedStars(5);
-                  setCommentText('');
-                  setShowWriteForm(!showWriteForm);
-                }}
-                activeOpacity={0.85}
-              >
-                <Icon name={showWriteForm ? 'close' : 'pencil'} size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={[styles.writeReviewBtnText, getTextStyle()]}>
-                  {showWriteForm ? 'Cancel' : 'Write Review'}
-                </Text>
-              </TouchableOpacity>
+              {!showWriteForm && (
+                <TouchableOpacity
+                  style={styles.writeReviewBtn}
+                  onPress={() => {
+                    setEditingReviewId(null);
+                    setSelectedStars(5);
+                    setCommentText('');
+                    setShowWriteForm(true);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="pencil" size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={[styles.writeReviewBtnText, getTextStyle()]}>
+                    {t('writeReviewBtn')}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Write / Edit Review Form Card */}
             {showWriteForm && (
-              <View style={styles.formCard}>
-                <Text style={[styles.formHeading, getTextStyle()]}>
-                  {editingReviewId ? 'Edit Your Review (1-Time Only)' : 'Submit a Verified Ride Review'}
+              <View style={[styles.formCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+                <Text style={[styles.formHeading, { color: theme.textPrimary }, getTextStyle()]}>
+                  {editingReviewId ? t('editYourReview') : t('writePublicReviewFor')} {userProfile.fullName || 'Driver'}
                 </Text>
 
-                {/* Star Picker */}
-                <Text style={[styles.inputLabel, getTextStyle()]}>Your Rating</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('rateExperienceStars')}</Text>
                 <View style={styles.starPickerRow}>
-                  {[1, 2, 3, 4, 5].map((star) => (
+                  {[1, 2, 3, 4, 5].map((s) => (
                     <TouchableOpacity
-                      key={star}
-                      onPress={() => setSelectedStars(star)}
+                      key={s}
+                      onPress={() => setSelectedStars(s)}
                       style={{ padding: 4 }}
-                      activeOpacity={0.85}
+                      activeOpacity={0.7}
                     >
                       <Icon
-                        name={star <= selectedStars ? 'star' : 'star-outline'}
+                        name="star"
                         size={28}
-                        color={star <= selectedStars ? '#2F9A3C' : '#8A908B'}
+                        color={s <= selectedStars ? '#2F9A3C' : theme.border}
                       />
                     </TouchableOpacity>
                   ))}
                 </View>
 
-                {/* Role Pill Selector */}
-                <Text style={[styles.inputLabel, getTextStyle()]}>Review As</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('iTraveledAs')}</Text>
                 <View style={styles.rolePickerRow}>
                   <TouchableOpacity
                     style={[
                       styles.roleChip,
-                      reviewerRole === 'passenger' ? styles.roleChipActive : null,
+                      { backgroundColor: theme.inputBackground, borderColor: theme.border },
+                      reviewerRole === 'passenger' && styles.roleChipActive,
                     ]}
                     onPress={() => setReviewerRole('passenger')}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text
                       style={[
                         styles.roleChipText,
-                        reviewerRole === 'passenger' ? styles.roleChipTextActive : null,
+                        { color: theme.textPrimary },
+                        reviewerRole === 'passenger' && styles.roleChipTextActive,
+                        getTextStyle(),
                       ]}
                     >
-                      Passenger
+                      {t('passenger')}
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
                       styles.roleChip,
-                      reviewerRole === 'driver' ? styles.roleChipActive : null,
+                      { backgroundColor: theme.inputBackground, borderColor: theme.border },
+                      reviewerRole === 'driver' && styles.roleChipActive,
                     ]}
                     onPress={() => setReviewerRole('driver')}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text
                       style={[
                         styles.roleChipText,
-                        reviewerRole === 'driver' ? styles.roleChipTextActive : null,
+                        { color: theme.textPrimary },
+                        reviewerRole === 'driver' && styles.roleChipTextActive,
+                        getTextStyle(),
                       ]}
                     >
-                      Driver
+                      {t('driver')}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Comment Text Input */}
-                <Text style={[styles.inputLabel, getTextStyle()]}>Your Feedback</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }, getTextStyle()]}>{t('reviewFeedbackLabel')}</Text>
                 <TextInput
-                  style={[styles.commentInput, getTextStyle()]}
-                  placeholder="Share your experience traveling together..."
-                  placeholderTextColor="#8A908B"
+                  style={[styles.commentInput, { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.textPrimary }, getTextStyle()]}
+                  placeholder={t('reviewPlaceholder')}
+                  placeholderTextColor={theme.textSecondary}
                   multiline
+                  numberOfLines={3}
                   value={commentText}
                   onChangeText={setCommentText}
                 />
 
-                <TouchableOpacity
-                  style={styles.submitReviewBtn}
-                  onPress={handleSaveOrUpdateReview}
-                  disabled={isSubmitting}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.submitReviewBtnText, getTextStyle()]}>
-                    {isSubmitting ? 'Submitting...' : (editingReviewId ? 'Update Review' : 'Post Public Review')}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <TouchableOpacity
+                    style={[styles.submitReviewBtn, { flex: 1, backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border }]}
+                    onPress={() => setShowWriteForm(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.submitReviewBtnText, { color: theme.textPrimary }, getTextStyle()]}>
+                      {t('cancel')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.submitReviewBtn, { flex: 2 }]}
+                    onPress={handleSaveOrUpdateReview}
+                    disabled={isSubmitting}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.submitReviewBtnText, getTextStyle()]}>
+                      {isSubmitting ? t('saving') : editingReviewId ? t('saveChanges') : t('submitVerifiedReview')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
             {/* List of Verified Reviews */}
-            <Text style={[styles.sectionHeading, getTextStyle()]}>Recent Community Reviews</Text>
+            <Text style={[styles.sectionHeading, { color: theme.textPrimary }, getTextStyle()]}>
+              {t('travelerReviews')} ({reviews.length})
+            </Text>
 
             {reviews.length === 0 ? (
               <View style={styles.emptyReviews}>
-                <Icon name="comment-text-multiple-outline" size={36} color="#8A908B" />
-                <Text style={[styles.emptyText, getTextStyle()]}>
-                  No reviews yet. Complete a shared trip to leave a review!
+                <Icon name="comment-text-multiple-outline" size={36} color={theme.textSecondary} />
+                <Text style={[styles.emptyText, { color: theme.textSecondary }, getTextStyle()]}>
+                  {t('noReviewsYet')}
                 </Text>
               </View>
             ) : (
               reviews.map((item) => (
-                <View key={item.id} style={styles.reviewCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={styles.reviewerAvatar}>
-                        <Icon name={item.reviewerRole === 'driver' ? 'steering' : 'account'} size={16} color="#2F9A3C" />
+                <View key={item.id} style={[styles.reviewCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={[styles.reviewerAvatar, { backgroundColor: 'rgba(47, 154, 60, 0.10)' }]}>
+                        <Icon name="account" size={18} color="#2F9A3C" />
                       </View>
-                      <View style={{ marginLeft: 8 }}>
-                        <Text style={[styles.reviewerName, getTextStyle()]}>{item.reviewerName}</Text>
-                        <Text style={styles.reviewerRoleTag}>
-                          {item.reviewerRole === 'driver' ? 'Driver Review' : 'Passenger Review'}
+                      <View>
+                        <Text style={[styles.reviewerName, { color: theme.textPrimary }, getTextStyle()]}>
+                          {item.reviewerName}
+                        </Text>
+                        <Text style={[styles.reviewerRoleTag, { color: theme.textSecondary }, getTextStyle()]}>
+                          {item.reviewerRole === 'driver' ? t('driver') : t('passenger')} • {t('verifiedRide')}
                         </Text>
                       </View>
                     </View>
 
                     <View style={{ alignItems: 'flex-end' }}>
-                      <View style={styles.starsRow}>
-                        {[1, 2, 3, 4, 5].map((s) => (
+                      <View style={styles.reviewStarsBadge}>
+                        {[1, 2, 3, 4, 5].map((st) => (
                           <Icon
-                            key={s}
-                            name={s <= item.rating ? 'star' : 'star-outline'}
-                            size={14}
-                            color={s <= item.rating ? '#2F9A3C' : '#8A908B'}
+                            key={st}
+                            name="star"
+                            size={12}
+                            color={st <= item.rating ? '#2F9A3C' : theme.border}
                           />
                         ))}
                       </View>
-                      <Text style={styles.reviewDateText}>{item.date}</Text>
+                      <Text style={[styles.reviewDateText, { color: theme.textSecondary }, getTextStyle()]}>{item.date}</Text>
                     </View>
                   </View>
 
-                  <Text style={[styles.reviewCommentText, getTextStyle()]}>{item.comment}</Text>
+                  <Text style={[styles.reviewCommentText, { color: theme.textPrimary }, getTextStyle()]}>{item.comment}</Text>
 
                   {item.reviewerUid === 'user_current' && !item.isEdited && (
                     <TouchableOpacity
