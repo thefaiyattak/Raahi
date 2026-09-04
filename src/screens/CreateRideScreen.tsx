@@ -22,7 +22,7 @@ import MapLocationPickerModal from '../components/MapLocationPickerModal';
 import { showThemedAlert } from '../context/AlertContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { getDriverProfile, getUserProfile } from '../services/storage';
+import { getDriverProfile, getUserProfile, saveDriverProfile } from '../services/storage';
 import { fetchRoutes, getUniqueLocations, matchRoute } from '../services/sheetService';
 import { saveOfferRidePostLocal, parseDepartureTimestamp } from '../services/dbService';
 import { checkAndNotifyMatchingPost } from '../services/notificationService';
@@ -78,13 +78,38 @@ export default function CreateRideScreen({
   const [matchedRouteConfig, setMatchedRouteConfig] = useState<RouteConfig | null>(null);
 
   useEffect(() => {
+    if (initialFrom) {
+      setSelectedOrigin(initialFrom);
+    }
+    if (initialTo) {
+      setSelectedDestination(initialTo);
+    }
+  }, [initialFrom, initialTo]);
+
+  useEffect(() => {
     loadProfileAndRoutes();
   }, []);
 
   const loadProfileAndRoutes = async () => {
     try {
       setIsLoadingProfile(true);
-      const profile = await getDriverProfile();
+      let profile = await getDriverProfile();
+      if (!profile) {
+        const userProf = await getUserProfile();
+        if (userProf?.driverProfile) {
+          const fallbackProfile: DriverProfile = {
+            vehicleName: userProf.driverProfile.vehicleName || 'Honda Civic',
+            vehicleModel: userProf.driverProfile.vehicleModel || '2022',
+            phoneNumber: userProf.phoneNumber || userProf.phone || '+923449793574',
+            defaultACStatus: userProf.driverProfile.defaultACStatus ?? true,
+            driverName: userProf.driverProfile.driverName || userProf.fullName || 'Driver',
+            licenseNumber: userProf.driverProfile.licenseNumber,
+            isLicenseVerified: userProf.driverProfile.isLicenseVerified,
+          };
+          profile = fallbackProfile;
+          await saveDriverProfile(fallbackProfile).catch(() => {});
+        }
+      }
       if (profile) {
         setDriverProfile(profile);
         setIsAC(profile.defaultACStatus);

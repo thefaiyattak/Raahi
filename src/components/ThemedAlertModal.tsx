@@ -108,7 +108,7 @@ export const ThemedAlertModal: React.FC<ThemedAlertProps> = ({
                   const isCancel = btn.style === 'cancel';
                   const isPrimary = !isDestructive && !isCancel;
 
-                  let btnStyle = styles.primaryBtn;
+                  let btnStyle: any = styles.primaryBtn;
                   let textStyle: any = styles.primaryBtnText;
 
                   if (isDestructive) {

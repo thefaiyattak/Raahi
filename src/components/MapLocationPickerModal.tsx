@@ -141,10 +141,10 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8 }}>
             <Text style={[styles.headerTitle, { color: theme.textPrimary }, getTextStyle()]} numberOfLines={1}>
-              {title || t('selectLocationOnMap')}
+              {title || (t as any)('selectLocationOnMap') || 'Select Location on Map'}
             </Text>
             <Text style={[styles.headerSubtitle, { color: theme.textSecondary }, getTextStyle()]} numberOfLines={1}>
-              {t('tapAnywhereMap')}
+              {(t as any)('tapAnywhereMap') || 'Tap anywhere on the map to pin location'}
             </Text>
           </View>
           <View style={{ width: 40 }} />

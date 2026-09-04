@@ -38,7 +38,7 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
   interactive = true,
   showControls = true,
 }) => {
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
   const webViewRef = useRef<any>(null);
   const [activeMapStyle, setActiveMapStyle] = useState<MapStyleType>('soft');
 
@@ -78,9 +78,9 @@ export const OSMMapView: React.FC<OSMMapViewProps> = ({
             width: 100%;
             margin: 0;
             padding: 0;
-            background-color: ${activeMapStyle === 'dark' ? '#121613' : '#F2F3F2'};
+            background-color: ${isDarkMode ? '#121613' : '#F2F3F2'};
           }
-          ${activeMapStyle === 'dark' ? `
+          ${isDarkMode ? `
           .leaflet-tile {
             filter: brightness(0.9) contrast(1.1);
           }

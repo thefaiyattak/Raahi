@@ -283,12 +283,16 @@ export default function HomeScreen({
   const handleSelectQuickRoute = (from: string, to: string) => {
     setFilterFromCity(from);
     setFilterToCity(to);
-    setMainNavTab('home');
+    if (subRoleTab === 'driver') {
+      onNavigateToCreateRide(from, to);
+    } else {
+      handleOpenBookModal(from, to);
+    }
   };
 
-  const handleOpenBookModal = () => {
-    setBookFrom(filterFromCity || '');
-    setBookTo(filterToCity || '');
+  const handleOpenBookModal = (from?: string, to?: string) => {
+    setBookFrom(from || filterFromCity || '');
+    setBookTo(to || filterToCity || '');
     setShowBookFormModal(true);
   };
 
@@ -977,7 +981,7 @@ export default function HomeScreen({
               }}
               activeOpacity={0.85}
             >
-              <Icon name="plus" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Icon name="plus" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
               <Text style={[styles.primaryPostBtnText, getTextStyle()]}>
                 {subRoleTab === 'driver' ? t('offerRideBtn') : t('postSeatRequestBtn')}
               </Text>
@@ -1063,7 +1067,7 @@ export default function HomeScreen({
                 activeOpacity={0.85}
               >
                 <View style={styles.statIconBadge}>
-                  <Icon name="cash-multiple" size={18} color="#2F9A3C" />
+                  <Icon name="wallet" size={18} color="#2F9A3C" />
                 </View>
                 <Text numberOfLines={1} style={[styles.statValue, { color: theme.textPrimary }]}>{t('rs')} 23k</Text>
                 <Text numberOfLines={1} style={[styles.statLabel, { color: theme.textPrimary }, getTextStyle()]}>{t('earnings')}</Text>
@@ -1147,6 +1151,12 @@ export default function HomeScreen({
                   <Text style={[{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }, getTextStyle()]}>
                     {routeItem.from} ➔ {routeItem.to}
                   </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[{ fontSize: 11, fontWeight: '600', color: '#2F9A3C', marginRight: 4 }, getTextStyle()]}>
+                      {subRoleTab === 'driver' ? t('offerRideBtn') : t('postSeatRequestBtn')}
+                    </Text>
+                    <Icon name="arrow-right" size={14} color="#2F9A3C" />
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -3633,26 +3643,29 @@ const styles = StyleSheet.create({
   },
   primaryPostBtn: {
     backgroundColor: '#2F9A3C',
-    height: 52,
-    borderRadius: 20,
+    width: 220,
+    height: 42,
+    borderRadius: 21,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: 6,
     ...Platform.select({
       ios: {
         shadowColor: '#2F9A3C',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.28,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.22,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 4,
+        elevation: 3,
       },
     }),
   },
   primaryPostBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   activeTripBanner: {

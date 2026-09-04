@@ -17,6 +17,7 @@ export const initialize = async (): Promise<boolean> => {
   if (isFirebaseAvailable !== null) return isFirebaseAvailable;
 
   try {
+    // @ts-ignore
     const { default: firebase } = await import('@react-native-firebase/app');
     
     // Check if app is already initialized
@@ -27,6 +28,7 @@ export const initialize = async (): Promise<boolean> => {
     }
     
     // Lazy-load database to ensure it's registered
+    // @ts-ignore
     await import('@react-native-firebase/database');
     
     isFirebaseAvailable = true;
@@ -44,6 +46,7 @@ export const fetchFareRates = async (): Promise<AdminFareConfig | null> => {
     const available = await initialize();
     if (!available) return null;
 
+    // @ts-ignore
     const { default: firebase } = await import('@react-native-firebase/app');
     const database = firebase.app().database();
     
@@ -70,6 +73,7 @@ export const listenFareRates = (onUpdate: (config: AdminFareConfig | null) => vo
         return;
       }
 
+      // @ts-ignore
       const { default: firebase } = await import('@react-native-firebase/app');
       const database = firebase.app().database();
       ref = database.ref('/admin/rates');
@@ -104,6 +108,7 @@ export const postActiveRide = async (tripId: string, tripSummary: any): Promise<
     const available = await initialize();
     if (!available) return false;
 
+    // @ts-ignore
     const { default: firebase } = await import('@react-native-firebase/app');
     const database = firebase.app().database();
     await database.ref(`/active_rides/${tripId}`).set({
@@ -122,6 +127,7 @@ export const removeActiveRide = async (tripId: string): Promise<boolean> => {
     const available = await initialize();
     if (!available) return false;
 
+    // @ts-ignore
     const { default: firebase } = await import('@react-native-firebase/app');
     const database = firebase.app().database();
     await database.ref(`/active_rides/${tripId}`).remove();

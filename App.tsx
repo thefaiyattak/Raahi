@@ -13,7 +13,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import { initialize as initLinking } from './src/services/linkingService';
 import { initializeFareRates, subscribeToFareUpdates } from './src/services/fareEngine';
 import { syncFareFormulaFromGoogleSheets } from './src/services/fareCalculationService';
-import { getAuthSession, AuthSession } from './src/services/authService';
+import { getAuthSession, saveAuthSession, AuthSession } from './src/services/authService';
 import { getUserProfile } from './src/services/storage';
 import { TripData, UserProfile } from './src/types';
 
